@@ -1,0 +1,1694 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MudaStudio - Photo Booth SMK Muhammadiyah 2 Ajibarang</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js untuk efek suara kamera & timer -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- QRCode.js untuk generate QR unduh/cetak -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- gifshot untuk membuat file animasi GIF asli dari rangkaian pose -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js"></script>
+    <!-- Google Fonts: Plus Jakarta Sans & Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #ffffff;
+            color: #111827;
+            overflow-x: hidden;
+        }
+        h1, h2, h3, .font-display {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        .mirror-video {
+            transform: scaleX(-1);
+        }
+        /* Gradasi pink-soft estetik ala BeautyPlus */
+        .hero-glow {
+            background: radial-gradient(circle at 50% 65%, rgba(251, 207, 232, 0.45) 0%, rgba(255, 255, 255, 0) 68%);
+        }
+        @keyframes cameraFlash {
+            0% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        .flash-active {
+            animation: cameraFlash 0.45s ease-out forwards;
+        }
+        /* Style Cetak Presisi Tinggi sesuai ukuran frame */
+        @media print {
+            @page {
+                margin: 0;
+            }
+            body * {
+                visibility: hidden !important;
+            }
+            #print-stage, #print-stage * {
+                visibility: visible !important;
+            }
+            #print-stage {
+                position: fixed !important;
+                left: 50% !important;
+                top: 50% !important;
+                transform: translate(-50%, -50%) !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                background: white !important;
+            }
+            #print-image-target {
+                max-width: 100% !important;
+                max-height: 100% !important;
+                width: auto !important;
+                height: auto !important;
+                object-fit: contain !important;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-white text-slate-900 selection:bg-pink-500 selection:text-white">
+
+    <!-- Flash Layar -->
+    <div id="flash-overlay" class="fixed inset-0 bg-white pointer-events-none opacity-0 z-50"></div>
+
+    <!-- Stage Tersembunyi Khusus Print Kualitas Tinggi -->
+    <div id="print-stage" class="hidden">
+        <img id="print-image-target" src="" alt="Print Output">
+    </div>
+
+    <!-- ==================== VIEW 0: HALAMAN UNDUH QR DI HP SISWA (?session=...) ==================== -->
+    <section id="view-qr-download" class="hidden min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div class="max-w-md w-full bg-white rounded-3xl shadow-2xl border border-slate-100 p-6 text-center">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pink-50 text-pink-600 text-xs font-bold mb-3">
+                <span>📸 MudaStudio • SMK Muh 2 Ajibarang</span>
+            </div>
+            <h2 class="font-display font-extrabold text-2xl text-slate-900 mb-1">Foto Kamu Sudah Siap!</h2>
+            <p id="qr-view-subtitle" class="text-xs text-slate-500 mb-4">Memuat hasil foto dari database...</p>
+
+            <div id="qr-loading-spinner" class="py-12 flex flex-col items-center justify-center gap-3">
+                <div class="w-10 h-10 border-4 border-pink-200 border-t-pink-500 rounded-full animate-spin"></div>
+                <span class="text-xs font-semibold text-slate-500">Mengambil file dari server...</span>
+            </div>
+
+            <div id="qr-content-ready" class="hidden space-y-4">
+                <div class="bg-slate-100 p-3 rounded-2xl border border-slate-200 flex justify-center">
+                    <img id="qr-fetched-framed-img" src="" alt="Hasil Photo Booth" class="max-h-[420px] w-auto rounded-xl shadow-md">
+                </div>
+
+                <a id="qr-btn-save-framed" href="#" download="MudaStudio-Photo.png" class="w-full py-3.5 px-5 rounded-2xl bg-[#ff477e] hover:bg-[#f0356d] text-white font-bold text-sm shadow-lg shadow-pink-500/25 flex items-center justify-center gap-2 transition">
+                    <span>⬇️ Simpan Foto Ber-Frame ke HP</span>
+                </a>
+
+                <div id="qr-takes-section" class="pt-2 border-t border-slate-100 text-left">
+                    <p class="text-xs font-bold text-slate-700 mb-2">Foto Satuan (Per-Take):</p>
+                    <div id="qr-takes-grid" class="grid grid-cols-2 gap-2"></div>
+                </div>
+            </div>
+
+            <button onclick="exitQrDownloadMode()" class="mt-6 text-xs font-semibold text-slate-400 hover:text-pink-600 transition">
+                &larr; Buka Halaman Utama MudaStudio
+            </button>
+        </div>
+    </section>
+
+    <!-- Toast Notifikasi -->
+    <div id="toast-box" class="fixed bottom-6 right-6 z-50 transform translate-y-24 opacity-0 transition-all duration-300 pointer-events-none">
+        <div class="bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-slate-700">
+            <span id="toast-dot" class="w-2.5 h-2.5 rounded-full bg-pink-500"></span>
+            <p id="toast-msg" class="text-sm font-medium">Notifikasi</p>
+        </div>
+    </div>
+
+    <!-- ==================== NAVBAR ==================== -->
+    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-100">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
+            <!-- Brand Logo MudaStudio -->
+            <div onclick="navigateTo('dashboard')" class="flex items-center gap-2.5 cursor-pointer group">
+                <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-pink-500 via-rose-500 to-indigo-500 p-0.5 shadow-md group-hover:scale-105 transition">
+                    <div class="w-full h-full bg-white rounded-[14px] flex items-center justify-center">
+                        <svg class="w-6 h-6 text-pink-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                            <rect x="3" y="5" width="18" height="14" rx="4"></rect>
+                            <circle cx="12" cy="12" r="3.5"></circle>
+                            <circle cx="17.5" cy="8.5" r="1" fill="currentColor"></circle>
+                        </svg>
+                    </div>
+                </div>
+                <div>
+                    <span class="font-display font-extrabold text-xl tracking-tight text-slate-900">muda<span class="text-pink-500">studio</span></span>
+                    <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-pink-50 text-pink-600 rounded-full border border-pink-200">SMK Muh 2 Ajibarang</span>
+                </div>
+            </div>
+
+            <!-- Menu Kanan: Mode Admin & Kembali -->
+            <div class="flex items-center gap-2 sm:gap-3">
+                <button id="nav-camera-status" onclick="openCameraSettingsModal()" class="hidden md:flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 transition">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span id="active-camera-label">Kamera / DSLR</span>
+                </button>
+                <button onclick="openAdminModal()" class="px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-sm transition">
+                    <svg class="w-4 h-4 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
+                    </svg>
+                    <span>Admin Frame</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ==================== VIEW 1: DASHBOARD LANDING PAGE ==================== -->
+    <section id="view-dashboard" class="flex-grow flex flex-col justify-between hero-glow">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 pb-12 text-center">
+            <!-- Breadcrumb ala BeautyPlus -->
+            <div class="flex items-center justify-center gap-2 text-xs text-slate-400 mb-6">
+                <span>Beranda</span>
+                <span>&rsaquo;</span>
+                <span>SMK Muhammadiyah 2 Ajibarang</span>
+                <span>&rsaquo;</span>
+                <span class="text-slate-700 font-medium">Photo Booth</span>
+            </div>
+
+            <!-- Judul Utama -->
+            <h1 class="font-display text-3xl sm:text-5xl lg:text-[52px] font-extrabold text-slate-900 tracking-tight leading-tight mb-4">
+                Photo Booth Web – <span class="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-rose-600">MudaStudio</span>
+            </h1>
+            <p class="text-slate-600 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed mb-8">
+                Abadikan momen seru acara <strong>SMK Muhammadiyah 2 Ajibarang</strong> secara gratis! Pilih kisi foto, filter estetik, bingkai eksklusif sekolah, stiker lucu, unduh versi GIF & foto satuan, atau cetak langsung berkualitas tinggi.
+            </p>
+
+            <!-- Tombol Mulai Besar (Pink Pill) -->
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-3 mb-12">
+                <button onclick="startStudioApp()" class="w-full sm:w-auto px-12 py-4 rounded-full bg-[#ff477e] hover:bg-[#f0356d] text-white font-bold text-base sm:text-lg shadow-xl shadow-pink-500/30 transition transform hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-3">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                        <circle cx="12" cy="13" r="3"></circle>
+                    </svg>
+                    <span>Mulai</span>
+                </button>
+            </div>
+
+            <!-- Ilustrasi Preview Strip & Mockup Studio (Visual seperti referensi) -->
+            <div class="relative max-w-3xl mx-auto mt-4">
+                <!-- Strip Kiri Miring -->
+                <div class="hidden sm:flex flex-col gap-2 w-32 bg-pink-100 p-2.5 rounded-2xl shadow-xl border-4 border-white absolute -left-6 top-6 -rotate-12 z-10">
+                    <div class="aspect-[4/3] bg-gradient-to-tr from-pink-300 to-rose-200 rounded-lg flex items-center justify-center text-2xl">✌️</div>
+                    <div class="aspect-[4/3] bg-gradient-to-tr from-amber-200 to-pink-200 rounded-lg flex items-center justify-center text-2xl">🎓</div>
+                    <div class="aspect-[4/3] bg-gradient-to-tr from-indigo-200 to-pink-200 rounded-lg flex items-center justify-center text-2xl">✨</div>
+                    <div class="text-[9px] font-extrabold text-pink-700 tracking-wider pt-1">MUDASTUDIO</div>
+                </div>
+
+                <!-- Mockup Jendela Kamera Tengah -->
+                <div class="bg-white rounded-3xl shadow-2xl border border-slate-200/80 p-4 sm:p-6 mx-auto max-w-xl relative z-0">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2">
+                            <span class="px-3 py-1 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600">⏱ 3s</span>
+                            <span class="px-3 py-1 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600">⏱ 5s</span>
+                            <span class="px-3 py-1 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600">⏱ 10s</span>
+                        </div>
+                        <span class="px-3 py-1 rounded-full bg-pink-50 text-pink-600 text-xs font-semibold border border-pink-200">DSLR Ready</span>
+                    </div>
+                    <div class="aspect-[16/10] rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 flex flex-col items-center justify-center text-white p-6 relative overflow-hidden">
+                        <div class="w-16 h-16 rounded-full bg-pink-500/20 border border-pink-400/40 flex items-center justify-center mb-3">
+                            <svg class="w-8 h-8 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <p class="font-display font-bold text-lg">SMK Muhammadiyah 2 Ajibarang</p>
+                        <p class="text-xs text-slate-300 mt-1">Klik tombol "Mulai" di atas untuk mengaktifkan kamera</p>
+                    </div>
+                </div>
+
+                <!-- Strip Kanan Miring -->
+                <div class="hidden sm:flex flex-col gap-2 w-32 bg-white p-2.5 rounded-2xl shadow-xl border border-slate-200 absolute -right-6 top-10 rotate-12 z-10">
+                    <div class="aspect-[4/3] bg-sky-100 rounded-lg flex items-center justify-center text-2xl">📸</div>
+                    <div class="aspect-[4/3] bg-emerald-100 rounded-lg flex items-center justify-center text-2xl">🏫</div>
+                    <div class="aspect-[4/3] bg-violet-100 rounded-lg flex items-center justify-center text-2xl">🔥</div>
+                    <div class="text-[9px] font-extrabold text-slate-800 tracking-wider pt-1">SMK MUH 2</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== VIEW 2: STUDIO KAMERA & PENGATURAN ==================== -->
+    <section id="view-studio" class="hidden flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 py-5">
+        
+        <!-- Baris Kontrol Atas: Timer & Sumber Kamera DSLR -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <div class="flex items-center gap-2">
+                <button onclick="navigateTo('dashboard')" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition">
+                    <span>&larr; Dashboard</span>
+                </button>
+                <!-- Pilihan Timer 3s, 5s, 10s seperti referensi -->
+                <div class="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                    <button data-timer="3" class="timer-pill active px-3.5 py-1.5 rounded-lg text-xs font-bold bg-white text-pink-600 shadow-sm border border-pink-200 transition">⏱ 3s</button>
+                    <button data-timer="5" class="timer-pill px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition">⏱ 5s</button>
+                    <button data-timer="10" class="timer-pill px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition">⏱ 10s</button>
+                </div>
+            </div>
+
+            <!-- Pemilih Kamera DSLR / Webcam & Upload Foto Manual -->
+            <div class="flex flex-wrap items-center gap-2">
+                <!-- Tombol Cepat 3 Jenis Kamera: Laptop, DSLR, HP Android/iPhone -->
+                <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                    <button onclick="selectCameraSourceType('laptop')" id="cam-type-laptop" class="cam-type-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-white text-pink-600 shadow-xs transition">💻 Laptop</button>
+                    <button onclick="selectCameraSourceType('dslr')" id="cam-type-dslr" class="cam-type-btn px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition">📷 DSLR</button>
+                    <button onclick="selectCameraSourceType('phone')" id="cam-type-phone" class="cam-type-btn px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition">📱 HP Andro/iP</button>
+                </div>
+
+                <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+                    <svg class="w-4 h-4 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                    <select id="camera-device-select" class="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none max-w-[160px] sm:max-w-[210px]">
+                        <option value="">Mendeteksi Kamera...</option>
+                    </select>
+                </div>
+                <button onclick="toggleMirror()" id="studio-mirror-btn" class="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 transition">
+                    Cermin: ON
+                </button>
+            </div>
+        </div>
+
+        <!-- Area Kerja Utama Studio -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            
+            <!-- Sidebar Kiri: Tab Kisi (Layout), Frame, & Filter (ala BeautyPlus) -->
+            <div class="lg:col-span-4 flex gap-3">
+                <!-- Ikon Tab Vertikal -->
+                <div class="flex flex-col gap-2 bg-white border border-slate-200/90 shadow-lg rounded-2xl p-2 h-fit">
+                    <button onclick="switchStudioTab('kisi')" id="tab-btn-kisi" class="studio-tab-btn flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-pink-50 text-pink-600 font-bold text-[11px] gap-1 transition">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                            <line x1="3" y1="9" x2="21" y2="9"></line>
+                            <line x1="3" y1="15" x2="21" y2="15"></line>
+                        </svg>
+                        <span>Kisi</span>
+                    </button>
+                    <button onclick="switchStudioTab('frame')" id="tab-btn-frame" class="studio-tab-btn flex flex-col items-center justify-center w-16 h-16 rounded-xl text-slate-500 hover:bg-slate-50 font-semibold text-[11px] gap-1 transition">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        <span>Frame</span>
+                    </button>
+                    <button onclick="switchStudioTab('efek')" id="tab-btn-efek" class="studio-tab-btn flex flex-col items-center justify-center w-16 h-16 rounded-xl text-slate-500 hover:bg-slate-50 font-semibold text-[11px] gap-1 transition">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
+                        </svg>
+                        <span>Efek</span>
+                    </button>
+                </div>
+
+                <!-- Konten Panel Tab -->
+                <div class="flex-grow bg-white border border-slate-200/90 shadow-xl rounded-3xl p-4 min-h-[420px]">
+                    
+                    <!-- PANEL 1: KISI (PILIHAN GRID LAYOUT) -->
+                    <div id="panel-kisi" class="studio-panel">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="font-display font-bold text-base text-slate-900">Pilih Kisi Foto</h3>
+                            <span class="text-xs text-pink-600 font-semibold" id="selected-grid-label">4 Foto Strip</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2.5">
+                            <!-- Kisi 1: Strip 3 Foto -->
+                            <button onclick="selectLayout('strip-3', 3, '3 Foto Strip')" data-layout="strip-3" class="layout-card p-2.5 rounded-2xl border-2 border-slate-100 hover:border-pink-300 flex flex-col items-center gap-1.5 transition">
+                                <div class="w-10 h-16 bg-slate-100 rounded p-1 flex flex-col gap-1">
+                                    <div class="flex-1 bg-slate-300 rounded-xs"></div>
+                                    <div class="flex-1 bg-slate-300 rounded-xs"></div>
+                                    <div class="flex-1 bg-slate-300 rounded-xs"></div>
+                                </div>
+                                <span class="text-[11px] font-semibold text-slate-600">3 Foto</span>
+                            </button>
+
+                            <!-- Kisi 2: Strip 4 Foto (Default) -->
+                            <button onclick="selectLayout('strip-4', 4, '4 Foto Strip')" data-layout="strip-4" class="layout-card active p-2.5 rounded-2xl border-2 border-pink-500 bg-pink-50/40 flex flex-col items-center gap-1.5 transition">
+                                <div class="w-10 h-16 bg-slate-100 rounded p-1 flex flex-col gap-0.5">
+                                    <div class="flex-1 bg-pink-400 rounded-xs"></div>
+                                    <div class="flex-1 bg-pink-400 rounded-xs"></div>
+                                    <div class="flex-1 bg-pink-400 rounded-xs"></div>
+                                    <div class="flex-1 bg-pink-400 rounded-xs"></div>
+                                </div>
+                                <span class="text-[11px] font-bold text-pink-600">4 Foto</span>
+                            </button>
+
+                            <!-- Kisi 3: Grid 2x2 (4 Foto 4R) -->
+                            <button onclick="selectLayout('grid-2x2', 4, '4 Foto Grid 2x2')" data-layout="grid-2x2" class="layout-card p-2.5 rounded-2xl border-2 border-slate-100 hover:border-pink-300 flex flex-col items-center gap-1.5 transition">
+                                <div class="w-12 h-16 bg-slate-100 rounded p-1 grid grid-cols-2 gap-1">
+                                    <div class="bg-slate-300 rounded-xs"></div>
+                                    <div class="bg-slate-300 rounded-xs"></div>
+                                    <div class="bg-slate-300 rounded-xs"></div>
+                                    <div class="bg-slate-300 rounded-xs"></div>
+                                </div>
+                                <span class="text-[11px] font-semibold text-slate-600">Grid 2x2</span>
+                            </button>
+
+                            <!-- Kisi 4: Strip 2 Foto -->
+                            <button onclick="selectLayout('strip-2', 2, '2 Foto Besar')" data-layout="strip-2" class="layout-card p-2.5 rounded-2xl border-2 border-slate-100 hover:border-pink-300 flex flex-col items-center gap-1.5 transition">
+                                <div class="w-11 h-16 bg-slate-100 rounded p-1 flex flex-col gap-1">
+                                    <div class="flex-1 bg-slate-300 rounded-xs"></div>
+                                    <div class="flex-1 bg-slate-300 rounded-xs"></div>
+                                </div>
+                                <span class="text-[11px] font-semibold text-slate-600">2 Foto</span>
+                            </button>
+
+                            <!-- Kisi 5: Grid 6 Foto (2x3) -->
+                            <button onclick="selectLayout('grid-2x3', 6, '6 Foto Kolase')" data-layout="grid-2x3" class="layout-card p-2.5 rounded-2xl border-2 border-slate-100 hover:border-pink-300 flex flex-col items-center gap-1.5 transition">
+                                <div class="w-12 h-16 bg-slate-100 rounded p-1 grid grid-cols-2 gap-0.5">
+                                    <div class="bg-slate-300"></div><div class="bg-slate-300"></div>
+                                    <div class="bg-slate-300"></div><div class="bg-slate-300"></div>
+                                    <div class="bg-slate-300"></div><div class="bg-slate-300"></div>
+                                </div>
+                                <span class="text-[11px] font-semibold text-slate-600">6 Foto</span>
+                            </button>
+
+                            <!-- Kisi 6: 1 Foto Single -->
+                            <button onclick="selectLayout('single-1', 1, '1 Foto Utama')" data-layout="single-1" class="layout-card p-2.5 rounded-2xl border-2 border-slate-100 hover:border-pink-300 flex flex-col items-center gap-1.5 transition">
+                                <div class="w-12 h-16 bg-slate-100 rounded p-1.5 flex">
+                                    <div class="w-full h-full bg-slate-300 rounded-xs"></div>
+                                </div>
+                                <span class="text-[11px] font-semibold text-slate-600">1 Foto</span>
+                            </button>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-4 leading-relaxed">
+                            *Ukuran kertas cetak akan otomatis menyesuaikan dengan bentuk Kisi & Frame yang kamu pilih.
+                        </p>
+                    </div>
+
+                    <!-- PANEL 2: FRAME SEKOLAH & CUSTOM UPLOAD -->
+                    <div id="panel-frame" class="studio-panel hidden">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="font-display font-bold text-base text-slate-900">Desain Frame</h3>
+                            <button onclick="openAdminModal()" class="text-xs font-bold text-pink-600 hover:underline">+ Upload Frame</button>
+                        </div>
+                        <div id="frame-list-container" class="grid grid-cols-2 gap-2.5 max-h-[340px] overflow-y-auto pr-1">
+                            <!-- Diisi otomatis oleh JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- PANEL 3: EFEK FILTER WARNA -->
+                    <div id="panel-efek" class="studio-panel hidden">
+                        <h3 class="font-display font-bold text-base text-slate-900 mb-3">Efek & Filter</h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="setCameraFilter('none', this)" class="filter-chip active p-2.5 rounded-xl border-2 border-pink-500 bg-pink-50 text-pink-700 text-xs font-bold text-left">✨ Normal</button>
+                            <button onclick="setCameraFilter('brightness(1.08) contrast(1.04) saturate(1.2)', this)" class="filter-chip p-2.5 rounded-xl border border-slate-200 hover:border-pink-300 text-slate-700 text-xs font-semibold text-left">☀️ Cerah Glow</button>
+                            <button onclick="setCameraFilter('brightness(1.12) contrast(0.95) saturate(1.1) sepia(12%)', this)" class="filter-chip p-2.5 rounded-xl border border-slate-200 hover:border-pink-300 text-slate-700 text-xs font-semibold text-left">🌸 Korean Soft</button>
+                            <button onclick="setCameraFilter('grayscale(100%) contrast(1.2)', this)" class="filter-chip p-2.5 rounded-xl border border-slate-200 hover:border-pink-300 text-slate-700 text-xs font-semibold text-left">🖤 B&W Klasik</button>
+                            <button onclick="setCameraFilter('sepia(40%) contrast(1.08) brightness(1.03)', this)" class="filter-chip p-2.5 rounded-xl border border-slate-200 hover:border-pink-300 text-slate-700 text-xs font-semibold text-left">🎞️ Retro 90s</button>
+                            <button onclick="setCameraFilter('contrast(1.15) saturate(1.35)', this)" class="filter-chip p-2.5 rounded-xl border border-slate-200 hover:border-pink-300 text-slate-700 text-xs font-semibold text-left">🌈 Pop Vibrant</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Area Tengah: Live Kamera & Thumbnail Hasil Jepretan (8 Kolom) -->
+            <div class="lg:col-span-8 flex flex-col gap-4">
+                
+                <!-- Layar Kamera Utama -->
+                <div class="relative w-full aspect-[4/3] bg-slate-950 rounded-3xl overflow-hidden shadow-2xl border-4 border-slate-100">
+                    <video id="webcam" autoplay playsinline class="w-full h-full object-cover mirror-video"></video>
+
+                    <!-- Status Kamera / Panduan DSLR -->
+                    <div id="camera-placeholder" class="absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center p-6 text-center z-10">
+                        <div class="w-16 h-16 rounded-2xl bg-pink-500/20 text-pink-400 flex items-center justify-center mb-4">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                                <circle cx="12" cy="13" r="3"></circle>
+                            </svg>
+                        </div>
+                        <h3 class="text-white font-display font-bold text-lg mb-1">Menghubungkan Kamera...</h3>
+                        <p id="camera-msg" class="text-slate-400 text-xs sm:text-sm max-w-md mb-4">
+                            Pastikan kamera webcam atau kamera DSLR (via USB Capture / EOS Webcam Utility) sudah terpasang.
+                        </p>
+                        <button onclick="initCamera()" class="px-6 py-2.5 rounded-full bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold shadow-lg transition">
+                            Hubungkan Kamera
+                        </button>
+                    </div>
+
+                    <!-- Badge Status Pose -->
+                    <div class="absolute top-4 left-4 z-20 bg-black/65 backdrop-blur-md text-white px-4 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-pink-500 animate-ping"></span>
+                        <span id="capture-progress-label">Siap Foto (0 / 4)</span>
+                    </div>
+
+                    <!-- Countdown Angka Besar -->
+                    <div id="countdown-overlay" class="hidden absolute inset-0 bg-black/25 backdrop-blur-[2px] flex items-center justify-center z-30">
+                        <span id="countdown-digit" class="font-display font-extrabold text-8xl sm:text-9xl text-white drop-shadow-[0_8px_24px_rgba(0,0,0,0.85)]">3</span>
+                    </div>
+                </div>
+
+                <!-- Baris Thumbnail Foto yang Sudah Dijepret (Bisa Ulangi Per Foto!) -->
+                <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
+                    <div class="flex items-center justify-between mb-2 px-1">
+                        <span class="text-xs font-bold text-slate-700">Hasil Jepretan (Klik foto untuk mengulang pose tertentu)</span>
+                        <button onclick="resetAllCaptures()" class="text-xs font-semibold text-rose-600 hover:underline">Ulangi Semua</button>
+                    </div>
+                    <div id="captured-thumbnails" class="grid grid-cols-4 sm:grid-cols-6 gap-2.5">
+                        <!-- Slot thumbnail diisi via JS -->
+                    </div>
+                </div>
+
+                <!-- Tombol Shutter Utama & Navigasi ke Hasil -->
+                <div class="flex flex-wrap items-center justify-center gap-3 pt-1">
+                    <button id="btn-take-all" onclick="startAutoCaptureSequence()" class="flex-grow sm:flex-grow-0 px-8 py-4 rounded-full bg-[#ff477e] hover:bg-[#f0356d] text-white font-bold text-base shadow-xl shadow-pink-500/30 transition transform active:scale-95 flex items-center justify-center gap-2.5">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="9"></circle>
+                            <circle cx="12" cy="12" r="4" fill="currentColor"></circle>
+                        </svg>
+                        <span id="btn-take-label">Ambil Semua Foto</span>
+                    </button>
+
+                    <button id="btn-retake-last" onclick="retakeLastPhoto()" class="hidden px-5 py-4 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold text-sm transition flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <span>Ulangi Foto Terakhir</span>
+                    </button>
+
+                    <button id="btn-to-result" onclick="goToResultEditor()" disabled class="px-7 py-4 rounded-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold text-sm transition flex items-center gap-2">
+                        <span>Lanjut Edit & Stiker</span>
+                        <span>&rarr;</span>
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== VIEW 3: EDITOR STIKER, GIF, QR & CETAK ==================== -->
+    <section id="view-result" class="hidden flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+            <button onclick="navigateTo('studio')" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition">
+                &larr; Kembali Foto Ulang
+            </button>
+            <div class="text-center">
+                <h2 class="font-display font-extrabold text-xl text-slate-900">Hasil Photo Booth Siap!</h2>
+                <p class="text-xs text-slate-500">Tambahkan stiker, unduh paket file (Frame + Satuan + GIF), atau scan QR</p>
+            </div>
+            <button onclick="startNewSession()" class="px-4 py-2 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-600 text-xs sm:text-sm font-bold border border-pink-200 transition">
+                + Sesi Peserta Baru
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            <!-- Kolom Kiri (5 Kolom): Preview Interaktif Frame + Stiker -->
+            <div class="lg:col-span-5 flex flex-col items-center bg-slate-50 border border-slate-200/80 rounded-3xl p-5 shadow-inner">
+                <div class="flex items-center justify-between w-full mb-3">
+                    <span class="text-xs font-bold text-slate-600" id="print-size-badge">Ukuran Cetak: 2R Strip (600x1800 px)</span>
+                    <button onclick="clearStickers()" class="text-xs text-rose-500 font-semibold hover:underline">Hapus Stiker</button>
+                </div>
+
+                <!-- Container Canvas Hasil + Layer Stiker -->
+                <div id="result-preview-wrapper" class="relative shadow-2xl rounded-xl overflow-hidden bg-white select-none">
+                    <canvas id="final-canvas" class="max-w-full max-h-[540px] w-auto h-auto block"></canvas>
+                    <!-- Layer Stiker Interaktif di atas Canvas -->
+                    <div id="sticker-layer" class="absolute inset-0 overflow-hidden"></div>
+                </div>
+                <p class="text-[11px] text-slate-400 mt-3 text-center">Klik stiker di panel kanan untuk menempelkan, lalu geser posisi stiker langsung di atas foto.</p>
+            </div>
+
+            <!-- Kolom Kanan (7 Kolom): Stiker, Download Paket File, QR Code & Cetak -->
+            <div class="lg:col-span-7 flex flex-col gap-5">
+                
+                <!-- 1. Panel Stiker Lucu -->
+                <div class="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+                    <h3 class="font-display font-bold text-sm text-slate-900 mb-3 flex items-center gap-2">
+                        <span>1. Tambahkan Stiker & Hiasan Sekolah</span>
+                    </h3>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="addSticker('🎓')" class="w-11 h-11 rounded-xl bg-slate-50 hover:bg-pink-50 border border-slate-200 text-2xl flex items-center justify-center transition">🎓</button>
+                        <button onclick="addSticker('✌️')" class="w-11 h-11 rounded-xl bg-slate-50 hover:bg-pink-50 border border-slate-200 text-2xl flex items-center justify-center transition">✌️</button>
+                        <button onclick="addSticker('💖')" class="w-11 h-11 rounded-xl bg-slate-50 hover:bg-pink-50 border border-slate-200 text-2xl flex items-center justify-center transition">💖</button>
+                        <button onclick="addSticker('✨')" class="w-11 h-11 rounded-xl bg-slate-50 hover:bg-pink-50 border border-slate-200 text-2xl flex items-center justify-center transition">✨</button>
+                        <button onclick="addSticker('😎')" class="w-11 h-11 rounded-xl bg-slate-50 hover:bg-pink-50 border border-slate-200 text-2xl flex items-center justify-center transition">😎</button>
+                        <button onclick="addSticker('🔥')" class="w-11 h-11 rounded-xl bg-slate-50 hover:bg-pink-50 border border-slate-200 text-2xl flex items-center justify-center transition">🔥</button>
+                        <button onclick="addSticker('👑')" class="w-11 h-11 rounded-xl bg-slate-50 hover:bg-pink-50 border border-slate-200 text-2xl flex items-center justify-center transition">👑</button>
+                        <button onclick="addSticker('🎀')" class="w-11 h-11 rounded-xl bg-slate-50 hover:bg-pink-50 border border-slate-200 text-2xl flex items-center justify-center transition">🎀</button>
+                        <button onclick="addSticker('📸')" class="w-11 h-11 rounded-xl bg-slate-50 hover:bg-pink-50 border border-slate-200 text-2xl flex items-center justify-center transition">📸</button>
+                        <button onclick="addTextSticker('SMK MUH 2')" class="px-3 h-11 rounded-xl bg-pink-50 hover:bg-pink-100 border border-pink-200 text-xs font-extrabold text-pink-600 transition">SMK MUH 2</button>
+                        <button onclick="addTextSticker('AJIBARANG')" class="px-3 h-11 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-xs font-extrabold text-indigo-600 transition">AJIBARANG</button>
+                    </div>
+                </div>
+
+                <!-- 2. Unduh Semua Versi File (Frame, Satuan Per-Take, & GIF) -->
+                <div class="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+                    <h3 class="font-display font-bold text-sm text-slate-900 mb-3">2. Unduh Hasil Foto (Kualitas High Resolution)</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <!-- File Utama Ber-Frame -->
+                        <button onclick="downloadFramedPhoto()" class="p-3.5 rounded-2xl bg-pink-500 hover:bg-pink-600 text-white font-bold text-xs flex flex-col items-center justify-center gap-1.5 shadow-md shadow-pink-500/20 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                            <span>Foto Dengan Frame</span>
+                            <span class="text-[10px] font-normal opacity-90">PNG Kualitas Tinggi</span>
+                        </button>
+
+                        <!-- File Animasi GIF -->
+                        <button id="btn-download-gif" onclick="generateAndDownloadGIF()" class="p-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex flex-col items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <span>Versi Animasi GIF</span>
+                            <span class="text-[10px] font-normal opacity-90">Gerak Semua Pose</span>
+                        </button>
+
+                        <!-- File Satu Persatu (Per Take) -->
+                        <button onclick="downloadIndividualTakes()" class="p-3.5 rounded-2xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex flex-col items-center justify-center gap-1.5 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                            </svg>
+                            <span>Foto Satu-Persatu</span>
+                            <span class="text-[10px] font-normal opacity-90">Semua File Per-Take</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 3. QR Code Unduh / Cetak & Tombol Print Presisi -->
+                <div class="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+                    <div class="sm:col-span-5 flex flex-col items-center justify-center bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                        <div id="qrcode-container" class="bg-white p-2 rounded-xl shadow-xs"></div>
+                        <span class="text-[11px] font-bold text-slate-700 mt-2">Scan QR Unduh / Cetak</span>
+                        <span id="qr-session-code" class="text-[10px] text-slate-400 font-mono">ID: #MUDA-001</span>
+                    </div>
+
+                    <div class="sm:col-span-7 flex flex-col gap-3">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <h3 class="font-display font-bold text-sm text-slate-900">3. Cetak Langsung & QR Link</h3>
+                                <span id="db-sync-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Menyimpan ke Database...</span>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-1 leading-relaxed">
+                                Scan QR langsung membuka halaman unduh foto ini di HP siswa. Atur URL domain Vercel kamu di bawah jika diakses dari lokal.
+                            </p>
+                        </div>
+
+                        <!-- Input Optional Link Server / Vercel untuk QR -->
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">URL Website Publik / Vercel (Otomatis terisi saat online):</label>
+                            <input type="text" id="qr-base-url" placeholder="https://mudastudio-smkmuh2.vercel.app" oninput="updateQRCode()" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-pink-500">
+                        </div>
+
+                        <button onclick="printHighQualityFrame()" class="w-full py-3.5 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+                            </svg>
+                            <span>Cetak Foto Sekarang (Sesuai Frame)</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== MODAL ADMIN: UPLOAD FRAME & PENGATURAN DSLR ==================== -->
+    <div id="admin-modal" class="hidden fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 my-8 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="font-display font-extrabold text-lg text-slate-900">Panel Admin MudaStudio</h3>
+                    <p class="text-xs text-slate-500">Upload Frame PNG, Koneksi Google Spreadsheet & Setup Kamera</p>
+                </div>
+                <button onclick="closeAdminModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 font-bold">&times;</button>
+            </div>
+
+            <div class="space-y-4">
+                <!-- Upload Frame Custom -->
+                <div class="p-4 rounded-2xl bg-pink-50/60 border border-pink-200">
+                    <label class="block text-xs font-bold text-slate-800 mb-1">1. Upload Desain Frame Sekolah (PNG Transparan)</label>
+                    <p class="text-[11px] text-slate-500 mb-2.5">Pastikan kotak foto pada desain frame berlubang transparan (atau centang opsi auto-lubang jika kotak foto berwarna hijau/putih solid).</p>
+                    <input type="text" id="custom-frame-name" placeholder="Nama Frame (misal: Frame Wisuda 2026)" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white mb-2 focus:outline-none focus:border-pink-500">
+                    <div class="flex items-center gap-2 mb-2">
+                        <select id="custom-frame-layout" class="px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-semibold">
+                            <option value="strip-4">Untuk Kisi 4 Foto Strip</option>
+                            <option value="strip-3">Untuk Kisi 3 Foto Strip</option>
+                            <option value="grid-2x2">Untuk Kisi Grid 2x2</option>
+                            <option value="single-1">Untuk Kisi 1 Foto</option>
+                        </select>
+                        <label class="flex-grow cursor-pointer px-4 py-2 rounded-xl bg-pink-500 hover:bg-pink-600 text-white text-xs font-bold text-center transition">
+                            <span>Pilih File PNG</span>
+                            <input type="file" id="custom-frame-file" accept="image/png,image/webp" class="hidden" onchange="handleAdminFrameUpload(event)">
+                        </label>
+                    </div>
+                    <label class="inline-flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                        <input type="checkbox" id="auto-punch-holes" checked class="rounded text-pink-500">
+                        <span>Otomatis lubangi area kotak foto jika frame belum transparan</span>
+                    </label>
+                </div>
+
+                <!-- Koneksi Database Google Spreadsheet + Google Drive (Siap GitHub & Vercel) -->
+                <div class="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200">
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="text-xs font-bold text-emerald-950">2. Koneksi Database Google Spreadsheet & Drive</label>
+                        <span id="sheet-status-pill" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Cloud Aktif</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 mb-2">Tempel URL <strong>Google Apps Script Web App</strong> agar setiap hasil foto & link QR otomatis tercatat di Google Spreadsheet dan tersimpan di Google Drive.</p>
+                    <input type="text" id="google-sheet-webhook-url" placeholder="https://script.google.com/macros/s/AKfycb.../exec" onchange="saveSheetWebhookConfig()" class="w-full px-3 py-2 text-xs rounded-xl border border-emerald-200 bg-white mb-2 focus:outline-none focus:border-emerald-500">
+                    <details class="text-[11px] text-slate-600 bg-white/80 p-2.5 rounded-xl border border-emerald-100">
+                        <summary class="font-bold text-emerald-800 cursor-pointer">Lihat Kode Google Apps Script untuk Spreadsheet (Klik untuk salin)</summary>
+                        <pre id="apps-script-snippet" class="mt-2 p-2 bg-slate-900 text-emerald-300 rounded-lg overflow-x-auto text-[10px] leading-relaxed select-all">function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = JSON.parse(e.postData.contents);
+  var folder = DriveApp.getRootFolder();
+  var blob = Utilities.newBlob(Utilities.base64Decode(data.framedBase64.split(',')[1]), 'image/png', data.sessionId + '.png');
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  sheet.appendRow([new Date(), data.sessionId, data.layout, data.frameName, file.getUrl()]);
+  return ContentService.createTextOutput(JSON.stringify({status: 'ok', driveUrl: file.getUrl()})).setMimeType(ContentService.MimeType.JSON);
+}</pre>
+                    </details>
+                </div>
+
+                <!-- Panduan Koneksi Kamera DSLR & HP -->
+                <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                    <h4 class="text-xs font-bold text-slate-800 mb-1">📸 Panduan Kamera DSLR & HP Android / iPhone</h4>
+                    <ul class="text-[11px] text-slate-600 list-disc list-inside space-y-1">
+                        <li><strong>Kamera DSLR:</strong> Hubungkan via kabel USB + <em>EOS Webcam Utility / Nikon Webcam Utility</em> atau <em>HDMI Capture Card</em>.</li>
+                        <li><strong>HP Android / iPhone:</strong> Hubungkan via USB/Wi-Fi dengan <em>DroidCam / Iriun Webcam</em> (atau <em>Continuity Camera</em> di Mac/iPhone).</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="mt-5 flex justify-end">
+                <button onclick="closeAdminModal()" class="px-6 py-2.5 rounded-full bg-slate-900 text-white text-xs font-bold">Selesai & Simpan</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Inisialisasi Database Cloud untuk sinkronisasi QR Code & Sesi Foto
+        let db = null;
+        let auth = null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'mudastudio-smkmuh2';
+
+        async function initCloudDatabase() {
+            try {
+                if (typeof __firebase_config !== 'undefined') {
+                    const firebaseConfig = JSON.parse(__firebase_config);
+                    const app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                }
+            } catch (e) {
+                console.warn("Mode offline / Spreadsheet aktif:", e);
+            }
+        }
+        window.initCloudDatabase = initCloudDatabase;
+        window.firestoreOps = { getDb: () => db, getAuth: () => auth, appId, doc, setDoc, getDoc };
+    </script>
+
+    <script>
+        /**
+         * STATE GLOBAL APLIKASI MUDASTUDIO
+         */
+        const state = {
+            currentView: 'dashboard',
+            layout: 'strip-4',       // strip-3, strip-4, grid-2x2, strip-2, grid-2x3, single-1
+            totalSlots: 4,
+            timerSeconds: 3,
+            filter: 'none',
+            isMirrored: true,
+            isShooting: false,
+            captures: [],            // Array of HTMLCanvasElement (foto asli per-take)
+            selectedFrameId: 'smk-blue',
+            customFrames: [],        // Menyimpan frame PNG yang diupload admin
+            stickers: [],            // Daftar stiker { id, text, x, y, size }
+            sessionId: 'MUDA-' + Math.floor(1000 + Math.random() * 9000),
+            cameraSourceType: 'laptop', // 'laptop' | 'dslr' | 'phone'
+            sheetWebhookUrl: '',
+            latestDriveUrl: ''
+        };
+
+        // Daftar Frame Bawaan SMK Muhammadiyah 2 Ajibarang
+        const builtInFrames = [
+            { id: 'smk-blue', name: 'SMK Muh 2 Biru', bg: '#1e3a8a', accent: '#3b82f6', text: '#ffffff', sub: 'SMK MUHAMMADIYAH 2 AJIBARANG', overlayImg: null },
+            { id: 'pink-cute', name: 'MudaStudio Pink', bg: '#ffe4e6', accent: '#ff477e', text: '#881337', sub: 'MUDASTUDIO • SMK MUH 2 AJIBARANG', overlayImg: null },
+            { id: 'classic-white', name: 'Putih Minimalis', bg: '#ffffff', accent: '#cbd5e1', text: '#0f172a', sub: 'SMK MUHAMMADIYAH 2 AJIBARANG', overlayImg: null },
+            { id: 'elegant-dark', name: 'Hitam Elegan', bg: '#0f172a', accent: '#f59e0b', text: '#fbbf24', sub: 'SMK MUHAMMADIYAH 2 AJIBARANG', overlayImg: null }
+        ];
+
+        // Elemen DOM Utama
+        const videoEl = document.getElementById('webcam');
+        const finalCanvas = document.getElementById('final-canvas');
+        const finalCtx = finalCanvas.getContext('2d');
+        const stickerLayer = document.getElementById('sticker-layer');
+        let synth = null;
+
+        /**
+         * NOTIFIKASI & EFEK SUARA
+         */
+        function showToast(msg, isError = false) {
+            const box = document.getElementById('toast-box');
+            document.getElementById('toast-msg').textContent = msg;
+            document.getElementById('toast-dot').className = `w-2.5 h-2.5 rounded-full ${isError ? 'bg-rose-500' : 'bg-pink-500'}`;
+            box.classList.remove('translate-y-24', 'opacity-0');
+            setTimeout(() => box.classList.add('translate-y-24', 'opacity-0'), 3000);
+        }
+
+        function playShutterSound(isCapture = false) {
+            try {
+                if (!synth) synth = new Tone.Synth().toDestination();
+                if (Tone.context.state !== 'running') Tone.start();
+                synth.triggerAttackRelease(isCapture ? "C6" : "G4", isCapture ? "16n" : "32n");
+            } catch (e) {}
+        }
+
+        /**
+         * NAVIGASI HALAMAN (DASHBOARD -> STUDIO -> RESULT)
+         */
+        function navigateTo(viewName) {
+            state.currentView = viewName;
+            document.getElementById('view-dashboard').classList.toggle('hidden', viewName !== 'dashboard');
+            document.getElementById('view-studio').classList.toggle('hidden', viewName !== 'studio');
+            document.getElementById('view-result').classList.toggle('hidden', viewName !== 'result');
+
+            if (viewName === 'result') {
+                renderFinalComposite();
+                updateQRCode();
+            }
+        }
+
+        function startStudioApp() {
+            navigateTo('studio');
+            initCamera();
+            renderFrameList();
+            renderThumbnailSlots();
+        }
+
+        /**
+         * DETEKSI & KONEKSI KAMERA WEBCAM / DSLR / HP ANDROID & IPHONE
+         */
+        function selectCameraSourceType(type) {
+            state.cameraSourceType = type;
+            document.querySelectorAll('.cam-type-btn').forEach(btn => {
+                btn.classList.remove('bg-white', 'text-pink-600', 'font-bold', 'shadow-xs');
+                btn.classList.add('text-slate-600', 'font-semibold');
+            });
+            const active = document.getElementById(`cam-type-${type}`);
+            if (active) {
+                active.classList.add('bg-white', 'text-pink-600', 'font-bold', 'shadow-xs');
+                active.classList.remove('text-slate-600', 'font-semibold');
+            }
+
+            // Kamera DSLR biasanya tidak perlu di-mirror seperti kamera depan laptop
+            if (type === 'dslr' && state.isMirrored) {
+                toggleMirror();
+            } else if (type !== 'dslr' && !state.isMirrored) {
+                toggleMirror();
+            }
+
+            populateCameraDevices(true);
+        }
+
+        async function populateCameraDevices(autoSwitchByType = false) {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoInputs = devices.filter(d => d.kind === 'videoinput');
+                const select = document.getElementById('camera-device-select');
+                select.innerHTML = '';
+
+                let matchedDeviceId = null;
+
+                videoInputs.forEach((device, idx) => {
+                    const opt = document.createElement('option');
+                    opt.value = device.deviceId;
+                    const label = device.label || `Kamera #${idx + 1}`;
+                    opt.textContent = label;
+                    select.appendChild(opt);
+
+                    const lower = label.toLowerCase();
+                    if (autoSwitchByType && !matchedDeviceId) {
+                        if (state.cameraSourceType === 'dslr' && (lower.includes('eos') || lower.includes('nikon') || lower.includes('sony') || lower.includes('capture') || lower.includes('usb video') || lower.includes('cam link'))) {
+                            matchedDeviceId = device.deviceId;
+                        } else if (state.cameraSourceType === 'phone' && (lower.includes('droidcam') || lower.includes('iriun') || lower.includes('epoccam') || lower.includes('iphone') || lower.includes('android') || lower.includes('back'))) {
+                            matchedDeviceId = device.deviceId;
+                        } else if (state.cameraSourceType === 'laptop' && (lower.includes('integrated') || lower.includes('facetime') || lower.includes('webcam') || idx === 0)) {
+                            matchedDeviceId = device.deviceId;
+                        }
+                    }
+                });
+
+                if (autoSwitchByType && matchedDeviceId) {
+                    select.value = matchedDeviceId;
+                    initCamera(matchedDeviceId);
+                } else if (videoInputs.length > 0) {
+                    document.getElementById('active-camera-label').textContent = (videoInputs[0].label || 'Kamera Aktif').slice(0, 22);
+                }
+            } catch (e) {
+                console.warn('Tidak dapat membaca daftar perangkat kamera:', e);
+            }
+        }
+
+        async function initCamera(deviceId = null) {
+            try {
+                if (videoEl.srcObject) {
+                    videoEl.srcObject.getTracks().forEach(t => t.stop());
+                }
+
+                const constraints = {
+                    video: {
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'user' })
+                    },
+                    audio: false
+                };
+
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                videoEl.srcObject = stream;
+                videoEl.onloadedmetadata = () => {
+                    document.getElementById('camera-placeholder').classList.add('hidden');
+                    populateCameraDevices();
+                };
+            } catch (err) {
+                document.getElementById('camera-msg').textContent = "Kamera belum terdeteksi. Pastikan izin kamera aktif atau kabel USB DSLR sudah terhubung.";
+                showToast("Gagal mengakses kamera", true);
+            }
+        }
+
+        document.getElementById('camera-device-select').addEventListener('change', (e) => {
+            if (e.target.value) initCamera(e.target.value);
+        });
+
+        function toggleMirror() {
+            state.isMirrored = !state.isMirrored;
+            videoEl.classList.toggle('mirror-video', state.isMirrored);
+            document.getElementById('studio-mirror-btn').textContent = `Cermin: ${state.isMirrored ? 'ON' : 'OFF'}`;
+        }
+
+        /**
+         * TAB STUDIO: KISI, FRAME, DAN EFEK
+         */
+        function switchStudioTab(tabName) {
+            document.querySelectorAll('.studio-panel').forEach(p => p.classList.add('hidden'));
+            document.getElementById(`panel-${tabName}`).classList.remove('hidden');
+
+            document.querySelectorAll('.studio-tab-btn').forEach(btn => {
+                btn.classList.remove('bg-pink-50', 'text-pink-600', 'font-bold');
+                btn.classList.add('text-slate-500', 'font-semibold');
+            });
+            const activeBtn = document.getElementById(`tab-btn-${tabName}`);
+            activeBtn.classList.add('bg-pink-50', 'text-pink-600', 'font-bold');
+            activeBtn.classList.remove('text-slate-500', 'font-semibold');
+        }
+
+        function selectLayout(layoutCode, slots, labelText) {
+            if (state.isShooting) return;
+            state.layout = layoutCode;
+            state.totalSlots = slots;
+            state.captures = [];
+
+            document.getElementById('selected-grid-label').textContent = labelText;
+            document.querySelectorAll('.layout-card').forEach(card => {
+                const isSelected = card.dataset.layout === layoutCode;
+                card.classList.toggle('border-pink-500', isSelected);
+                card.classList.toggle('bg-pink-50/40', isSelected);
+                card.classList.toggle('border-slate-100', !isSelected);
+            });
+
+            renderThumbnailSlots();
+            updateCaptureControls();
+            showToast(`Kisi diubah ke ${labelText}`);
+        }
+
+        function setCameraFilter(filterCss, btnEl) {
+            state.filter = filterCss;
+            videoEl.style.filter = filterCss;
+            document.querySelectorAll('.filter-chip').forEach(c => {
+                c.classList.remove('border-pink-500', 'bg-pink-50', 'text-pink-700', 'font-bold');
+                c.classList.add('border-slate-200', 'text-slate-700');
+            });
+            btnEl.classList.add('border-pink-500', 'bg-pink-50', 'text-pink-700', 'font-bold');
+            btnEl.classList.remove('border-slate-200', 'text-slate-700');
+        }
+
+        // Timer Pills (3s, 5s, 10s)
+        document.querySelectorAll('.timer-pill').forEach(pill => {
+            pill.addEventListener('click', () => {
+                state.timerSeconds = parseInt(pill.dataset.timer);
+                document.querySelectorAll('.timer-pill').forEach(p => {
+                    p.classList.remove('bg-white', 'text-pink-600', 'shadow-sm', 'border', 'border-pink-200');
+                    p.classList.add('text-slate-600');
+                });
+                pill.classList.add('bg-white', 'text-pink-600', 'shadow-sm', 'border', 'border-pink-200');
+                pill.classList.remove('text-slate-600');
+            });
+        });
+
+        /**
+         * PANEL FRAME & ADMIN UPLOAD FRAME PNG TRANSPARAN
+         */
+        function renderFrameList() {
+            const container = document.getElementById('frame-list-container');
+            const allFrames = [...state.customFrames, ...builtInFrames];
+            container.innerHTML = '';
+
+            allFrames.forEach(frame => {
+                const isSelected = state.selectedFrameId === frame.id;
+                const card = document.createElement('button');
+                card.className = `p-2.5 rounded-2xl border-2 text-left transition flex flex-col gap-1.5 ${isSelected ? 'border-pink-500 bg-pink-50/50' : 'border-slate-100 hover:border-pink-200'}`;
+                card.onclick = () => {
+                    state.selectedFrameId = frame.id;
+                    renderFrameList();
+                    showToast(`Frame "${frame.name}" dipilih`);
+                };
+
+                if (frame.overlayImg) {
+                    card.innerHTML = `
+                        <div class="w-full h-16 rounded-lg bg-slate-100 overflow-hidden flex items-center justify-center border border-slate-200">
+                            <img src="${frame.overlayImg.src}" class="h-full w-auto object-contain">
+                        </div>
+                        <span class="text-[11px] font-bold text-slate-800 truncate w-full">${frame.name}</span>
+                        <span class="text-[9px] text-pink-600 font-semibold">Custom PNG</span>
+                    `;
+                } else {
+                    card.innerHTML = `
+                        <div class="w-full h-16 rounded-lg flex items-center justify-center font-display font-extrabold text-[10px] tracking-wider" style="background:${frame.bg}; color:${frame.text}; border: 2px solid ${frame.accent}">
+                            SMK MUH 2
+                        </div>
+                        <span class="text-[11px] font-bold text-slate-800 truncate w-full">${frame.name}</span>
+                    `;
+                }
+                container.appendChild(card);
+            });
+        }
+
+        function openAdminModal() {
+            document.getElementById('admin-modal').classList.remove('hidden');
+        }
+        function closeAdminModal() {
+            document.getElementById('admin-modal').classList.add('hidden');
+        }
+        function openCameraSettingsModal() {
+            if (state.currentView === 'dashboard') {
+                startStudioApp();
+            } else {
+                openAdminModal();
+            }
+        }
+
+        function handleAdminFrameUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const nameInput = document.getElementById('custom-frame-name').value.trim() || file.name.replace(/\.[^/.]+$/, "");
+            const targetLayout = document.getElementById('custom-frame-layout').value;
+            const autoPunch = document.getElementById('auto-punch-holes').checked;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const newId = 'custom-' + Date.now();
+                    state.customFrames.unshift({
+                        id: newId,
+                        name: nameInput,
+                        targetLayout: targetLayout,
+                        autoPunch: autoPunch,
+                        bg: '#ffffff',
+                        accent: '#ff477e',
+                        text: '#111827',
+                        sub: 'SMK MUHAMMADIYAH 2 AJIBARANG',
+                        overlayImg: img
+                    });
+                    state.selectedFrameId = newId;
+                    renderFrameList();
+                    closeAdminModal();
+                    switchStudioTab('frame');
+                    if (state.currentView === 'result') {
+                        renderFinalComposite();
+                    }
+                    showToast(`Frame "${nameInput}" berhasil ditambahkan!`);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function saveSheetWebhookConfig() {
+            const url = document.getElementById('google-sheet-webhook-url').value.trim();
+            state.sheetWebhookUrl = url;
+            showToast(url ? "URL Google Spreadsheet tersimpan!" : "URL Spreadsheet dikosongkan");
+        }
+
+        /**
+         * PROSES PENGAMBILAN FOTO & RETAKE (ULANGI PER FOTO)
+         */
+        function captureSingleTake() {
+            const canvas = document.createElement('canvas');
+            const w = videoEl.videoWidth || 1280;
+            const h = videoEl.videoHeight || 960;
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+
+            if (state.isMirrored) {
+                ctx.translate(w, 0);
+                ctx.scale(-1, 1);
+            }
+            ctx.filter = state.filter;
+            ctx.drawImage(videoEl, 0, 0, w, h);
+
+            // Flash & Shutter Sound
+            const flash = document.getElementById('flash-overlay');
+            flash.classList.remove('flash-active');
+            void flash.offsetWidth;
+            flash.classList.add('flash-active');
+            playShutterSound(true);
+
+            return canvas;
+        }
+
+        function runCountdown(seconds) {
+            return new Promise(resolve => {
+                let left = seconds;
+                const overlay = document.getElementById('countdown-overlay');
+                const digit = document.getElementById('countdown-digit');
+                overlay.classList.remove('hidden');
+                digit.textContent = left;
+                playShutterSound(false);
+
+                const timer = setInterval(() => {
+                    left--;
+                    if (left > 0) {
+                        digit.textContent = left;
+                        playShutterSound(false);
+                    } else {
+                        clearInterval(timer);
+                        overlay.classList.add('hidden');
+                        resolve();
+                    }
+                }, 1000);
+            });
+        }
+
+        async function startAutoCaptureSequence() {
+            if (state.isShooting) return;
+            if (!videoEl.srcObject) {
+                showToast("Kamera belum aktif!", true);
+                return;
+            }
+
+            state.isShooting = true;
+            document.getElementById('btn-take-all').disabled = true;
+
+            // Mulai dari slot yang masih kosong
+            for (let i = state.captures.length; i < state.totalSlots; i++) {
+                document.getElementById('capture-progress-label').textContent = `Pose ${i + 1} dari ${state.totalSlots}...`;
+                await runCountdown(state.timerSeconds);
+                const shot = captureSingleTake();
+                state.captures[i] = shot;
+                renderThumbnailSlots();
+                updateCaptureControls();
+
+                if (i < state.totalSlots - 1) {
+                    await new Promise(r => setTimeout(r, 900));
+                }
+            }
+
+            state.isShooting = false;
+            document.getElementById('btn-take-all').disabled = false;
+            updateCaptureControls();
+            showToast("Semua pose selesai! Cek hasil atau ulangi jika ada yang kurang pas.");
+        }
+
+        // Mengulang 1 foto spesifik saat user klik thumbnail foto yang salah
+        async function retakeSpecificSlot(index) {
+            if (state.isShooting || !videoEl.srcObject) return;
+            state.isShooting = true;
+            showToast(`Bersiap mengulang Pose #${index + 1}...`);
+            await runCountdown(state.timerSeconds);
+            state.captures[index] = captureSingleTake();
+            state.isShooting = false;
+            renderThumbnailSlots();
+            updateCaptureControls();
+            showToast(`Pose #${index + 1} berhasil diperbarui!`);
+        }
+
+        function retakeLastPhoto() {
+            if (state.captures.length === 0 || state.isShooting) return;
+            retakeSpecificSlot(state.captures.length - 1);
+        }
+
+        function resetAllCaptures() {
+            if (state.isShooting) return;
+            state.captures = [];
+            renderThumbnailSlots();
+            updateCaptureControls();
+            showToast("Semua jepretan dihapus. Siap mulai ulang.");
+        }
+
+        function renderThumbnailSlots() {
+            const container = document.getElementById('captured-thumbnails');
+            container.innerHTML = '';
+
+            for (let i = 0; i < state.totalSlots; i++) {
+                const slot = document.createElement('div');
+                if (state.captures[i]) {
+                    slot.className = "relative aspect-[4/3] rounded-xl overflow-hidden border-2 border-pink-500 cursor-pointer group";
+                    slot.title = "Klik untuk mengulang pose ini";
+                    slot.onclick = () => retakeSpecificSlot(i);
+                    slot.innerHTML = `
+                        <img src="${state.captures[i].toDataURL('image/jpeg', 0.7)}" class="w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition">
+                            Ulangi #${i + 1}
+                        </div>
+                    `;
+                } else {
+                    slot.className = "aspect-[4/3] rounded-xl border-2 border-dashed border-slate-300 bg-white flex items-center justify-center text-xs font-bold text-slate-400";
+                    slot.textContent = `#${i + 1}`;
+                }
+                container.appendChild(slot);
+            }
+        }
+
+        function updateCaptureControls() {
+            const count = state.captures.filter(Boolean).length;
+            document.getElementById('capture-progress-label').textContent = `Tersimpan (${count} / ${state.totalSlots})`;
+
+            const btnRetakeLast = document.getElementById('btn-retake-last');
+            btnRetakeLast.classList.toggle('hidden', count === 0);
+
+            const btnNext = document.getElementById('btn-to-result');
+            btnNext.disabled = count < state.totalSlots;
+
+            const btnTakeLabel = document.getElementById('btn-take-label');
+            btnTakeLabel.textContent = count === 0 ? "Ambil Semua Foto" : (count < state.totalSlots ? "Lanjutkan Foto" : "Semua Pose Lengkap");
+        }
+
+        /**
+         * HALAMAN HASIL: COMPOSITING FRAME + STIKER + HIGH QUALITY PRINT
+         */
+        async function goToResultEditor() {
+            state.sessionId = 'MUDA-' + Math.floor(1000 + Math.random() * 9000);
+            document.getElementById('qr-session-code').textContent = `ID: #${state.sessionId}`;
+            navigateTo('result');
+            await syncSessionToDatabaseAndSheet();
+        }
+
+        function getLayoutDimensions() {
+            // Dimensi High Resolution (300 DPI equivalent) sesuai jenis frame
+            switch (state.layout) {
+                case 'strip-3':
+                    return { w: 600, h: 1500, cols: 1, rows: 3, printLabel: '2R Strip (5 x 12.7 cm) • High Res' };
+                case 'strip-4':
+                    return { w: 600, h: 1800, cols: 1, rows: 4, printLabel: '2R Strip Panjang (5 x 15 cm) • High Res' };
+                case 'strip-2':
+                    return { w: 600, h: 1100, cols: 1, rows: 2, printLabel: '2R Double (5 x 9.2 cm) • High Res' };
+                case 'grid-2x2':
+                    return { w: 1200, h: 1800, cols: 2, rows: 2, printLabel: '4R Postcard (10 x 15 cm) • High Res' };
+                case 'grid-2x3':
+                    return { w: 1200, h: 1800, cols: 2, rows: 3, printLabel: '4R Kolase 6 Foto (10 x 15 cm) • High Res' };
+                case 'single-1':
+                default:
+                    return { w: 1200, h: 1500, cols: 1, rows: 1, printLabel: '4R Portrait (10 x 12.7 cm) • High Res' };
+            }
+        }
+
+        function renderFinalComposite() {
+            const dim = getLayoutDimensions();
+            document.getElementById('print-size-badge').textContent = `Ukuran Cetak: ${dim.printLabel}`;
+
+            finalCanvas.width = dim.w;
+            finalCanvas.height = dim.h;
+
+            const allFrames = [...state.customFrames, ...builtInFrames];
+            const frame = allFrames.find(f => f.id === state.selectedFrameId) || builtInFrames[0];
+
+            // 1. Bersihkan & gambar Background Dasar Frame
+            finalCtx.clearRect(0, 0, dim.w, dim.h);
+            finalCtx.fillStyle = frame.bg;
+            finalCtx.fillRect(0, 0, dim.w, dim.h);
+
+            // 2. Hitung posisi slot foto
+            const pad = dim.cols === 1 ? 36 : 44;
+            const gap = 24;
+            const footerSpace = 170;
+
+            const availW = dim.w - (pad * 2) - ((dim.cols - 1) * gap);
+            const availH = dim.h - (pad * 2) - footerSpace - ((dim.rows - 1) * gap);
+            const cellW = availW / dim.cols;
+            const cellH = availH / dim.rows;
+
+            const slotRects = [];
+            let idx = 0;
+            for (let r = 0; r < dim.rows; r++) {
+                for (let c = 0; c < dim.cols; c++) {
+                    const x = pad + c * (cellW + gap);
+                    const y = pad + r * (cellH + gap);
+                    slotRects.push({ x, y, w: cellW, h: cellH });
+                    const photo = state.captures[idx];
+                    if (photo) {
+                        drawImageCover(finalCtx, photo, x, y, cellW, cellH);
+                    }
+                    idx++;
+                }
+            }
+
+            // 3. Jika Admin mengunggah PNG Overlay, pastikan lubang foto tetap transparan agar foto tampil di dalam frame!
+            if (frame.overlayImg) {
+                const tempFrameCanvas = document.createElement('canvas');
+                tempFrameCanvas.width = dim.w;
+                tempFrameCanvas.height = dim.h;
+                const tCtx = tempFrameCanvas.getContext('2d');
+                tCtx.drawImage(frame.overlayImg, 0, 0, dim.w, dim.h);
+
+                // Jika frame yang diupload tidak memiliki lubang alpha transparan, lubangi otomatis area slot foto
+                if (frame.autoPunch) {
+                    tCtx.globalCompositeOperation = 'destination-out';
+                    slotRects.forEach(rect => {
+                        tCtx.fillStyle = '#000000';
+                        tCtx.fillRect(rect.x, rect.y, rect.w, rect.h);
+                    });
+                    tCtx.globalCompositeOperation = 'source-over';
+                }
+
+                finalCtx.drawImage(tempFrameCanvas, 0, 0, dim.w, dim.h);
+            } else {
+                // Branding Bawaan SMK Muhammadiyah 2 Ajibarang
+                finalCtx.strokeStyle = frame.accent;
+                finalCtx.lineWidth = 6;
+                finalCtx.strokeRect(14, 14, dim.w - 28, dim.h - 28);
+
+                const footerY = dim.h - footerSpace + 55;
+                finalCtx.fillStyle = frame.text;
+                finalCtx.textAlign = 'center';
+                finalCtx.font = `800 ${dim.cols === 1 ? 26 : 36}px "Plus Jakarta Sans", sans-serif`;
+                finalCtx.fillText('MUDASTUDIO', dim.w / 2, footerY);
+
+                finalCtx.font = `700 ${dim.cols === 1 ? 16 : 22}px Inter, sans-serif`;
+                finalCtx.fillText(frame.sub, dim.w / 2, footerY + 34);
+
+                const dateStr = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+                finalCtx.globalAlpha = 0.75;
+                finalCtx.font = `500 ${dim.cols === 1 ? 13 : 17}px Inter, sans-serif`;
+                finalCtx.fillText(`${dateStr} • #${state.sessionId}`, dim.w / 2, footerY + 64);
+                finalCtx.globalAlpha = 1.0;
+            }
+        }
+
+        // Helper agar foto terpotong rapi memenuhi kotak slot (object-fit: cover)
+        function drawImageCover(ctx, img, x, y, w, h) {
+            const imgRatio = img.width / img.height;
+            const boxRatio = w / h;
+            let sx = 0, sy = 0, sw = img.width, sh = img.height;
+
+            if (imgRatio > boxRatio) {
+                sw = img.height * boxRatio;
+                sx = (img.width - sw) / 2;
+            } else {
+                sh = img.width / boxRatio;
+                sy = (img.height - sh) / 2;
+            }
+            ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+        }
+
+        /**
+         * SINKRONISASI KE DATABASE CLOUD & GOOGLE SPREADSHEET + QR CODE HALAMAN UNDUH
+         */
+        async function syncSessionToDatabaseAndSheet() {
+            const badge = document.getElementById('db-sync-badge');
+            if (badge) {
+                badge.textContent = 'Menyimpan ke Database...';
+                badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200';
+            }
+
+            const merged = buildMergedHighResCanvas();
+            // Kompresi optimal agar cepat diunggah ke database & cepat dibuka di HP siswa
+            const framedDataUrl = merged.toDataURL('image/jpeg', 0.86);
+            const takesDataUrls = state.captures.map(c => c.toDataURL('image/jpeg', 0.72));
+
+            const allFrames = [...state.customFrames, ...builtInFrames];
+            const frame = allFrames.find(f => f.id === state.selectedFrameId) || builtInFrames[0];
+
+            // 1. Simpan ke Database Cloud (agar QR Code ?session=ID langsung memuat foto di HP)
+            try {
+                if (window.firestoreOps && window.firestoreOps.getDb()) {
+                    const { getDb, getAuth, appId, doc, setDoc } = window.firestoreOps;
+                    const db = getDb();
+                    const user = getAuth()?.currentUser;
+                    if (db && user) {
+                        const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', state.sessionId);
+                        await setDoc(sessionRef, {
+                            sessionId: state.sessionId,
+                            layout: state.layout,
+                            frameName: frame.name,
+                            framedImage: framedDataUrl,
+                            takes: takesDataUrls,
+                            createdAt: new Date().toISOString()
+                        });
+                    }
+                }
+            } catch (err) {
+                console.warn('Gagal simpan ke Cloud DB:', err);
+            }
+
+            // 2. Kirim ke Google Spreadsheet Webhook jika Admin sudah mengisi URL Apps Script
+            if (state.sheetWebhookUrl) {
+                try {
+                    const res = await fetch(state.sheetWebhookUrl, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            sessionId: state.sessionId,
+                            layout: state.layout,
+                            frameName: frame.name,
+                            framedBase64: framedDataUrl
+                        })
+                    });
+                    const json = await res.json();
+                    if (json && json.driveUrl) {
+                        state.latestDriveUrl = json.driveUrl;
+                    }
+                } catch (err) {
+                    console.warn('Info Spreadsheet webhook:', err);
+                }
+            }
+
+            if (badge) {
+                badge.textContent = state.sheetWebhookUrl ? '✓ Tersimpan di Spreadsheet & Cloud' : '✓ Tersimpan di Database QR';
+                badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
+            }
+            updateQRCode();
+        }
+
+        function updateQRCode() {
+            const qrContainer = document.getElementById('qrcode-container');
+            qrContainer.innerHTML = '';
+
+            // Gunakan URL publik dari input atau otomatis URL website saat sudah di-deploy ke Vercel
+            const customBase = document.getElementById('qr-base-url').value.trim().replace(/\/$/, '');
+            const currentOrigin = (window.location.origin && window.location.origin.startsWith('http'))
+                ? `${window.location.origin}${window.location.pathname}`
+                : '';
+
+            const targetBase = customBase || currentOrigin;
+            let qrPayload = '';
+
+            if (state.latestDriveUrl) {
+                qrPayload = state.latestDriveUrl;
+            } else if (targetBase) {
+                qrPayload = `${targetBase}?session=${encodeURIComponent(state.sessionId)}`;
+            } else {
+                qrPayload = `https://mudastudio-smkmuh2.vercel.app/?session=${encodeURIComponent(state.sessionId)}`;
+            }
+
+            new QRCode(qrContainer, {
+                text: qrPayload,
+                width: 112,
+                height: 112,
+                colorDark: "#0f172a",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+
+        async function loadQrDownloadSession(sessionId) {
+            document.getElementById('view-dashboard').classList.add('hidden');
+            document.getElementById('view-studio').classList.add('hidden');
+            document.getElementById('view-result').classList.add('hidden');
+            document.querySelector('header').classList.add('hidden');
+            document.getElementById('view-qr-download').classList.remove('hidden');
+
+            document.getElementById('qr-view-subtitle').textContent = `Sesi Foto #${sessionId} • SMK Muhammadiyah 2 Ajibarang`;
+
+            try {
+                await window.initCloudDatabase();
+                const { getDb, appId, doc, getDoc } = window.firestoreOps;
+                const db = getDb();
+                if (!db) throw new Error('Database belum siap');
+
+                const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', sessionId));
+                if (!snap.exists()) {
+                    document.getElementById('qr-loading-spinner').innerHTML = `<p class="text-sm font-bold text-rose-500">Data sesi #${sessionId} tidak ditemukan atau sudah kedaluwarsa.</p>`;
+                    return;
+                }
+
+                const data = snap.data();
+                document.getElementById('qr-loading-spinner').classList.add('hidden');
+                document.getElementById('qr-content-ready').classList.remove('hidden');
+
+                const mainImg = document.getElementById('qr-fetched-framed-img');
+                mainImg.src = data.framedImage;
+
+                const dlBtn = document.getElementById('qr-btn-save-framed');
+                dlBtn.href = data.framedImage;
+                dlBtn.download = `MudaStudio-${sessionId}.jpg`;
+
+                const takesGrid = document.getElementById('qr-takes-grid');
+                takesGrid.innerHTML = '';
+                (data.takes || []).forEach((tUrl, i) => {
+                    const a = document.createElement('a');
+                    a.href = tUrl;
+                    a.download = `MudaStudio-${sessionId}-Pose-${i + 1}.jpg`;
+                    a.className = 'block rounded-xl overflow-hidden border border-slate-200 relative group';
+                    a.innerHTML = `
+                        <img src="${tUrl}" class="w-full aspect-[4/3] object-cover">
+                        <span class="block text-center py-1 bg-slate-900 text-white text-[10px] font-bold">⬇️ Pose #${i + 1}</span>
+                    `;
+                    takesGrid.appendChild(a);
+                });
+            } catch (err) {
+                document.getElementById('qr-loading-spinner').innerHTML = `<p class="text-xs text-rose-500 font-semibold">Gagal memuat foto: ${err.message}</p>`;
+            }
+        }
+
+        function exitQrDownloadMode() {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            document.getElementById('view-qr-download').classList.add('hidden');
+            document.querySelector('header').classList.remove('hidden');
+            navigateTo('dashboard');
+        }
+
+        function addTextSticker(label) {
+            createDraggableSticker(label, false);
+        }
+
+        function createDraggableSticker(content, isEmoji) {
+            const el = document.createElement('div');
+            el.textContent = content;
+            el.className = isEmoji
+                ? 'absolute text-4xl sm:text-5xl cursor-move select-none drop-shadow-md active:scale-110 transition-transform'
+                : 'absolute px-3 py-1 rounded-full bg-pink-500 text-white font-display font-extrabold text-xs tracking-wider cursor-move select-none shadow-lg border-2 border-white';
+            el.style.left = '40%';
+            el.style.top = '35%';
+
+            // Drag Support (Mouse & Touch)
+            let isDragging = false, startX, startY, origLeft, origTop;
+
+            const onDown = (clientX, clientY) => {
+                isDragging = true;
+                startX = clientX;
+                startY = clientY;
+                origLeft = el.offsetLeft;
+                origTop = el.offsetTop;
+            };
+
+            const onMove = (clientX, clientY) => {
+                if (!isDragging) return;
+                el.style.left = `${origLeft + (clientX - startX)}px`;
+                el.style.top = `${origTop + (clientY - startY)}px`;
+            };
+
+            el.addEventListener('mousedown', e => { e.preventDefault(); onDown(e.clientX, e.clientY); });
+            window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+            window.addEventListener('mouseup', () => isDragging = false);
+
+            el.addEventListener('touchstart', e => {
+                const t = e.touches[0];
+                onDown(t.clientX, t.clientY);
+            }, { passive: true });
+            window.addEventListener('touchmove', e => {
+                if (!isDragging) return;
+                const t = e.touches[0];
+                onMove(t.clientX, t.clientY);
+            }, { passive: true });
+            window.addEventListener('touchend', () => isDragging = false);
+
+            // Double click untuk hapus 1 stiker
+            el.ondblclick = () => el.remove();
+
+            stickerLayer.appendChild(el);
+        }
+
+        function clearStickers() {
+            stickerLayer.innerHTML = '';
+        }
+
+        // Gabungkan Canvas Utama + Stiker yang ditempel user sebelum Download/Print
+        function buildMergedHighResCanvas() {
+            const merged = document.createElement('canvas');
+            merged.width = finalCanvas.width;
+            merged.height = finalCanvas.height;
+            const mCtx = merged.getContext('2d');
+
+            mCtx.drawImage(finalCanvas, 0, 0);
+
+            // Skalakan koordinat stiker dari ukuran preview layar ke resolusi asli canvas
+            const rect = finalCanvas.getBoundingClientRect();
+            const scaleX = finalCanvas.width / rect.width;
+            const scaleY = finalCanvas.height / rect.height;
+
+            stickerLayer.querySelectorAll('div').forEach(st => {
+                const x = st.offsetLeft * scaleX;
+                const y = st.offsetTop * scaleY;
+                const isBadge = st.classList.contains('rounded-full');
+
+                if (isBadge) {
+                    const fontSize = Math.round(14 * scaleX);
+                    mCtx.font = `800 ${fontSize}px "Plus Jakarta Sans", sans-serif`;
+                    const textW = mCtx.measureText(st.textContent).width;
+                    const padX = 14 * scaleX;
+                    const boxH = 28 * scaleY;
+
+                    mCtx.fillStyle = '#ff477e';
+                    mCtx.beginPath();
+                    mCtx.roundRect(x, y, textW + padX * 2, boxH, 999);
+                    mCtx.fill();
+
+                    mCtx.fillStyle = '#ffffff';
+                    mCtx.textAlign = 'left';
+                    mCtx.fillText(st.textContent, x + padX, y + boxH * 0.68);
+                } else {
+                    const emojiSize = Math.round(44 * scaleX);
+                    mCtx.font = `${emojiSize}px serif`;
+                    mCtx.textAlign = 'left';
+                    mCtx.fillText(st.textContent, x, y + emojiSize * 0.85);
+                }
+            });
+
+            return merged;
+        }
+
+        /**
+         * UNDUH 3 VERSI FILE: BER-FRAME, GIF ANIMASI, DAN SATUAN PER-TAKE
+         */
+        function downloadFramedPhoto() {
+            const merged = buildMergedHighResCanvas();
+            const link = document.createElement('a');
+            link.download = `MudaStudio-${state.sessionId}-Framed.png`;
+            link.href = merged.toDataURL('image/png', 1.0);
+            link.click();
+            showToast("Mengunduh Foto dengan Frame (High Quality)...");
+        }
+
+        function downloadIndividualTakes() {
+            if (state.captures.length === 0) return;
+            state.captures.forEach((cap, idx) => {
+                setTimeout(() => {
+                    const link = document.createElement('a');
+                    link.download = `MudaStudio-${state.sessionId}-Take-${idx + 1}.png`;
+                    link.href = cap.toDataURL('image/png', 1.0);
+                    link.click();
+                }, idx * 350);
+            });
+            showToast(`Mengunduh ${state.captures.length} file foto satuan...`);
+        }
+
+        function generateAndDownloadGIF() {
+            if (state.captures.length === 0) return;
+            const btn = document.getElementById('btn-download-gif');
+            btn.disabled = true;
+            showToast("Sedang merender animasi GIF...");
+
+            const images = state.captures.map(c => c.toDataURL('image/jpeg', 0.85));
+            gifshot.createGIF({
+                images: images,
+                gifWidth: 640,
+                gifHeight: 480,
+                interval: 0.45,
+                numFrames: images.length
+            }, (obj) => {
+                btn.disabled = false;
+                if (!obj.error) {
+                    const link = document.createElement('a');
+                    link.download = `MudaStudio-${state.sessionId}.gif`;
+                    link.href = obj.image;
+                    link.click();
+                    showToast("File GIF berhasil diunduh!");
+                } else {
+                    showToast("Gagal membuat GIF", true);
+                }
+            });
+        }
+
+        /**
+         * QR CODE UNDUH / CETAK & SISTEM PRINT SESUAI UKURAN FRAME
+         */
+        function updateQRCode() {
+            const qrContainer = document.getElementById('qrcode-container');
+            qrContainer.innerHTML = '';
+
+            const baseUrl = document.getElementById('qr-base-url').value.trim();
+            const qrPayload = baseUrl
+                ? `${baseUrl}?session=${state.sessionId}`
+                : `MudaStudio SMK Muhammadiyah 2 Ajibarang | ID Sesi: ${state.sessionId} | Layout: ${state.layout}`;
+
+            new QRCode(qrContainer, {
+                text: qrPayload,
+                width: 112,
+                height: 112,
+                colorDark: "#0f172a",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+
+        function printHighQualityFrame() {
+            const merged = buildMergedHighResCanvas();
+            const dataUrl = merged.toDataURL('image/png', 1.0);
+
+            const printTarget = document.getElementById('print-image-target');
+            printTarget.src = dataUrl;
+
+            // Atur orientasi halaman cetak otomatis sesuai dimensi frame (Portrait vs Landscape)
+            const isPortrait = merged.height >= merged.width;
+            let dynamicPageStyle = document.getElementById('dynamic-print-page');
+            if (!dynamicPageStyle) {
+                dynamicPageStyle = document.createElement('style');
+                dynamicPageStyle.id = 'dynamic-print-page';
+                document.head.appendChild(dynamicPageStyle);
+            }
+            dynamicPageStyle.innerHTML = `@media print { @page { size: ${isPortrait ? 'portrait' : 'landscape'}; margin: 0; } }`;
+
+            printTarget.onload = () => {
+                window.print();
+            };
+        }
+
+        function startNewSession() {
+            state.captures = [];
+            clearStickers();
+            renderThumbnailSlots();
+            updateCaptureControls();
+            navigateTo('studio');
+        }
+
+        // Inisialisasi awal
+        window.onload = async () => {
+            if (window.initCloudDatabase) {
+                await window.initCloudDatabase();
+            }
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionParam = urlParams.get('session');
+            if (sessionParam) {
+                loadQrDownloadSession(sessionParam);
+                return;
+            }
+            renderFrameList();
+        };
+    </script>
+</body>
+</html>
