@@ -646,25 +646,17 @@
             <div class="space-y-4">
                 <!-- Upload Frame Custom -->
                 <div class="p-4 rounded-2xl bg-pink-50/60 border border-pink-200">
-                    <label class="block text-xs font-bold text-slate-800 mb-1">1. Upload Desain Frame Sekolah (PNG Transparan)</label>
-                    <p class="text-[11px] text-slate-500 mb-2.5">Pastikan kotak foto pada desain frame berlubang transparan (atau centang opsi auto-lubang jika kotak foto berwarna hijau/putih solid).</p>
-                    <input type="text" id="custom-frame-name" placeholder="Nama Frame (misal: Frame Wisuda 2026)" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white mb-2 focus:outline-none focus:border-pink-500">
+                    <label class="block text-xs font-bold text-slate-800 mb-1">1. Upload Desain Frame Sekolah (Auto-Deteksi Lubang Foto)</label>
+                    <p class="text-[11px] text-slate-500 mb-2.5">Buat area foto pada desainmu menjadi <strong>Transparan (PNG)</strong> atau berwarna <strong>Hijau Cerah (#00FF00)</strong>. Sistem otomatis mendeteksi jumlah & posisi kotak (termasuk tata letak bebas/asimetris)!</p>
+                    <input type="text" id="custom-frame-name" placeholder="Nama Frame (misal: Frame Kolase Bebas 2026)" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white mb-2 focus:outline-none focus:border-pink-500">
                     <div class="flex items-center gap-2 mb-2">
-                        <select id="custom-frame-layout" class="px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-semibold">
-                            <option value="strip-4">Untuk Kisi 4 Foto Strip</option>
-                            <option value="strip-3">Untuk Kisi 3 Foto Strip</option>
-                            <option value="grid-2x2">Untuk Kisi Grid 2x2</option>
-                            <option value="single-1">Untuk Kisi 1 Foto</option>
-                        </select>
+                        <span class="px-3 py-2 text-[11px] rounded-xl border border-pink-200 bg-white font-bold text-pink-600">✨ Auto-Deteksi Slot & Ukuran</span>
                         <label class="flex-grow cursor-pointer px-4 py-2 rounded-xl bg-pink-500 hover:bg-pink-600 text-white text-xs font-bold text-center transition">
-                            <span>Pilih File PNG</span>
+                            <span>Pilih File Frame PNG</span>
                             <input type="file" id="custom-frame-file" accept="image/png,image/webp" class="hidden" onchange="handleAdminFrameUpload(event)">
                         </label>
                     </div>
-                    <label class="inline-flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
-                        <input type="checkbox" id="auto-punch-holes" checked class="rounded text-pink-500">
-                        <span>Otomatis lubangi area kotak foto jika frame belum transparan</span>
-                    </label>
+                    <p class="text-[10px] text-slate-500">*Mendukung tata letak bebas seperti 1 foto besar di atas + 3 foto kecil di bawah, miring, atau kotak acak.</p>
                 </div>
 
                 <!-- Koneksi Database Google Spreadsheet + Google Drive (Siap GitHub & Vercel) -->
@@ -1122,17 +1114,29 @@ function doGet(e) {
                 card.className = `p-2.5 rounded-2xl border-2 text-left transition flex flex-col gap-1.5 ${isSelected ? 'border-pink-500 bg-pink-50/50' : 'border-slate-100 hover:border-pink-200'}`;
                 card.onclick = () => {
                     state.selectedFrameId = frame.id;
+                    if (frame.detectedSlots && frame.detectedSlots.length > 0) {
+                        state.layout = 'custom-auto';
+                        state.totalSlots = frame.detectedSlots.length;
+                        state.captures = state.captures.slice(0, state.totalSlots);
+                        document.getElementById('selected-grid-label').textContent = `Auto ${state.totalSlots} Foto`;
+                        renderThumbnailSlots();
+                        updateCaptureControls();
+                    }
                     renderFrameList();
-                    showToast(`Frame "${frame.name}" dipilih`);
+                    if (state.currentView === 'result') {
+                        renderFinalComposite();
+                    }
+                    showToast(`Frame "${frame.name}" dipilih${frame.detectedSlots ? ` (${frame.detectedSlots.length} slot otomatis)` : ''}`);
                 };
 
                 if (frame.overlayImg) {
+                    const slotCount = frame.detectedSlots ? frame.detectedSlots.length : 0;
                     card.innerHTML = `
                         <div class="w-full h-16 rounded-lg bg-slate-100 overflow-hidden flex items-center justify-center border border-slate-200">
                             <img src="${frame.overlayImg.src}" class="h-full w-auto object-contain">
                         </div>
                         <span class="text-[11px] font-bold text-slate-800 truncate w-full">${frame.name}</span>
-                        <span class="text-[9px] text-pink-600 font-semibold">Custom PNG</span>
+                        <span class="text-[9px] text-pink-600 font-semibold">${slotCount > 0 ? `Auto ${slotCount} Slot Foto` : 'Custom PNG'}</span>
                     `;
                 } else {
                     card.innerHTML = `
@@ -1160,38 +1164,175 @@ function doGet(e) {
             }
         }
 
+        /**
+         * MESIN AUTO-DETEKSI LUBANG FOTO (TRANSPARAN / GREEN SCREEN) PADA FRAME CUSTOM
+         */
+        function detectFramePhotoSlots(img) {
+            const maxScan = 360;
+            const scale = Math.min(1, maxScan / Math.max(img.width, img.height));
+            const sw = Math.max(20, Math.round(img.width * scale));
+            const sh = Math.max(20, Math.round(img.height * scale));
+
+            const scanCanvas = document.createElement('canvas');
+            scanCanvas.width = sw;
+            scanCanvas.height = sh;
+            const sCtx = scanCanvas.getContext('2d');
+            sCtx.drawImage(img, 0, 0, sw, sh);
+
+            const imgData = sCtx.getImageData(0, 0, sw, sh);
+            const data = imgData.data;
+
+            // Buat versi frame bersih di mana area hijau chroma-key diubah menjadi transparan
+            const cleanCanvas = document.createElement('canvas');
+            cleanCanvas.width = img.width;
+            cleanCanvas.height = img.height;
+            const cCtx = cleanCanvas.getContext('2d');
+            cCtx.drawImage(img, 0, 0);
+            const fullData = cCtx.getImageData(0, 0, img.width, img.height);
+            const fPix = fullData.data;
+
+            let hasChromaGreen = false;
+            for (let i = 0; i < fPix.length; i += 4) {
+                const r = fPix[i], g = fPix[i + 1], b = fPix[i + 2], a = fPix[i + 3];
+                const isGreenScreen = a > 180 && g > 140 && g > r * 1.35 && g > b * 1.35;
+                if (isGreenScreen) {
+                    fPix[i + 3] = 0;
+                    hasChromaGreen = true;
+                }
+            }
+            if (hasChromaGreen) {
+                cCtx.putImageData(fullData, 0, 0);
+            }
+
+            // Tandai piksel yang merupakan lubang foto (alpha rendah atau chroma green)
+            const mask = new Uint8Array(sw * sh);
+            for (let i = 0; i < sw * sh; i++) {
+                const p = i * 4;
+                const r = data[p], g = data[p + 1], b = data[p + 2], a = data[p + 3];
+                const isTransparentHole = a < 90;
+                const isGreenHole = a >= 90 && g > 140 && g > r * 1.35 && g > b * 1.35;
+                if (isTransparentHole || isGreenHole) {
+                    mask[i] = 1;
+                }
+            }
+
+            // Connected-Components BFS untuk menemukan setiap kotak lubang foto terpisah
+            const visited = new Uint8Array(sw * sh);
+            const rawBoxes = [];
+            const minArea = (sw * sh) * 0.012; // Minimal 1.2% luas frame agar lubang kecil/teks tidak ikut terhitung
+
+            for (let y = 0; y < sh; y++) {
+                for (let x = 0; x < sw; x++) {
+                    const startIdx = y * sw + x;
+                    if (mask[startIdx] === 1 && visited[startIdx] === 0) {
+                        let minX = x, maxX = x, minY = y, maxY = y, count = 0;
+                        const queue = [startIdx];
+                        visited[startIdx] = 1;
+
+                        while (queue.length > 0) {
+                            const curr = queue.pop();
+                            const cx = curr % sw;
+                            const cy = (curr - cx) / sw;
+                            count++;
+
+                            if (cx < minX) minX = cx;
+                            if (cx > maxX) maxX = cx;
+                            if (cy < minY) minY = cy;
+                            if (cy > maxY) maxY = cy;
+
+                            const neighbors = [
+                                cx > 0 ? curr - 1 : -1,
+                                cx < sw - 1 ? curr + 1 : -1,
+                                cy > 0 ? curr - sw : -1,
+                                cy < sh - 1 ? curr + sw : -1
+                            ];
+                            for (let n = 0; n < 4; n++) {
+                                const nIdx = neighbors[n];
+                                if (nIdx >= 0 && mask[nIdx] === 1 && visited[nIdx] === 0) {
+                                    visited[nIdx] = 1;
+                                    queue.push(nIdx);
+                                }
+                            }
+                        }
+
+                        const boxW = maxX - minX + 1;
+                        const boxH = maxY - minY + 1;
+                        // Abaikan border luar jika seluruh pinggir frame transparan
+                        const touchesAllEdges = (minX <= 1 && maxX >= sw - 2 && minY <= 1 && maxY >= sh - 2);
+                        if (count >= minArea && !touchesAllEdges) {
+                            // Tambahkan sedikit overlap (bleed 3px) agar tidak ada celah garis putih di pinggir lubang
+                            rawBoxes.push({
+                                x: Math.max(0, (minX / sw) - 0.004),
+                                y: Math.max(0, (minY / sh) - 0.004),
+                                w: Math.min(1, (boxW / sw) + 0.008),
+                                h: Math.min(1, (boxH / sh) + 0.008)
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Urutkan slot dari atas ke bawah, lalu kiri ke kanan
+            rawBoxes.sort((a, b) => {
+                if (Math.abs(a.y - b.y) > 0.06) return a.y - b.y;
+                return a.x - b.x;
+            });
+
+            return {
+                slots: rawBoxes,
+                cleanedOverlayCanvas: cleanCanvas
+            };
+        }
+
         function handleAdminFrameUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
 
             const nameInput = document.getElementById('custom-frame-name').value.trim() || file.name.replace(/\.[^/.]+$/, "");
-            const targetLayout = document.getElementById('custom-frame-layout').value;
-            const autoPunch = document.getElementById('auto-punch-holes').checked;
 
             const reader = new FileReader();
             reader.onload = (e) => {
                 const img = new Image();
                 img.onload = () => {
+                    const detected = detectFramePhotoSlots(img);
+                    const slots = detected.slots;
+
+                    if (slots.length === 0) {
+                        showToast("Lubang foto tidak terdeteksi! Pastikan kotak foto di PNG transparan atau berwarna hijau (#00FF00).", true);
+                        return;
+                    }
+
                     const newId = 'custom-' + Date.now();
                     state.customFrames.unshift({
                         id: newId,
                         name: nameInput,
-                        targetLayout: targetLayout,
-                        autoPunch: autoPunch,
+                        detectedSlots: slots,
+                        nativeWidth: img.width,
+                        nativeHeight: img.height,
                         bg: '#ffffff',
                         accent: '#ff477e',
                         text: '#111827',
                         sub: 'SMK MUHAMMADIYAH 2 AJIBARANG',
-                        overlayImg: img
+                        overlayImg: img,
+                        cleanedOverlay: detected.cleanedOverlayCanvas
                     });
+
                     state.selectedFrameId = newId;
+                    state.layout = 'custom-auto';
+                    state.totalSlots = slots.length;
+                    state.captures = state.captures.slice(0, state.totalSlots);
+
+                    document.getElementById('selected-grid-label').textContent = `Auto ${slots.length} Foto`;
                     renderFrameList();
+                    renderThumbnailSlots();
+                    updateCaptureControls();
                     closeAdminModal();
                     switchStudioTab('frame');
+
                     if (state.currentView === 'result') {
                         renderFinalComposite();
                     }
-                    showToast(`Frame "${nameInput}" berhasil ditambahkan!`);
+                    showToast(`Berhasil! Terdeteksi ${slots.length} kotak foto otomatis pada frame "${nameInput}".`);
                 };
                 img.src = e.target.result;
             };
@@ -1199,141 +1340,39 @@ function doGet(e) {
         }
 
         function saveSheetWebhookConfig() {
-            const url = document.getElementById('google-sheet-webhook-url').value.trim();
-            state.sheetWebhookUrl = url;
-            showToast(url ? "URL Google Spreadsheet tersimpan!" : "URL Spreadsheet dikosongkan");
+            const urlInput = document.getElementById('google-sheet-webhook-url');
+            if (urlInput && urlInput.value.trim()) {
+                state.sheetWebhookUrl = urlInput.value.trim();
+                localStorage.setItem('mudastudio_sheet_url', state.sheetWebhookUrl);
+                showToast("URL Google Spreadsheet berhasil disimpan!");
+            }
         }
 
         /**
-         * PROSES PENGAMBILAN FOTO & RETAKE (ULANGI PER FOTO)
+         * SISTEM PENGAMBILAN FOTO (COUNTDOWN, CAPTURE, RETAKE PER-SLOT, THUMBNAILS)
          */
-        function captureSingleTake() {
-            const canvas = document.createElement('canvas');
-            const w = videoEl.videoWidth || 1280;
-            const h = videoEl.videoHeight || 960;
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-
-            if (state.isMirrored) {
-                ctx.translate(w, 0);
-                ctx.scale(-1, 1);
-            }
-            ctx.filter = state.filter;
-            ctx.drawImage(videoEl, 0, 0, w, h);
-
-            // Flash & Shutter Sound
-            const flash = document.getElementById('flash-overlay');
-            flash.classList.remove('flash-active');
-            void flash.offsetWidth;
-            flash.classList.add('flash-active');
-            playShutterSound(true);
-            syncExternalPreviewWindow(null, true);
-
-            return canvas;
-        }
-
-        function runCountdown(seconds) {
-            return new Promise(resolve => {
-                let left = seconds;
-                const overlay = document.getElementById('countdown-overlay');
-                const digit = document.getElementById('countdown-digit');
-                overlay.classList.remove('hidden');
-                digit.textContent = left;
-                playShutterSound(false);
-                syncExternalPreviewWindow(left, false);
-
-                const timer = setInterval(() => {
-                    left--;
-                    if (left > 0) {
-                        digit.textContent = left;
-                        playShutterSound(false);
-                        syncExternalPreviewWindow(left, false);
-                    } else {
-                        clearInterval(timer);
-                        overlay.classList.add('hidden');
-                        syncExternalPreviewWindow(null, false);
-                        resolve();
-                    }
-                }, 1000);
-            });
-        }
-
-        async function startAutoCaptureSequence() {
-            if (state.isShooting) return;
-            if (!videoEl.srcObject) {
-                showToast("Kamera belum aktif!", true);
-                return;
-            }
-
-            state.isShooting = true;
-            document.getElementById('btn-take-all').disabled = true;
-
-            // Mulai dari slot yang masih kosong
-            for (let i = state.captures.length; i < state.totalSlots; i++) {
-                document.getElementById('capture-progress-label').textContent = `Pose ${i + 1} dari ${state.totalSlots}...`;
-                await runCountdown(state.timerSeconds);
-                const shot = captureSingleTake();
-                state.captures[i] = shot;
-                renderThumbnailSlots();
-                updateCaptureControls();
-
-                if (i < state.totalSlots - 1) {
-                    await new Promise(r => setTimeout(r, 900));
-                }
-            }
-
-            state.isShooting = false;
-            document.getElementById('btn-take-all').disabled = false;
-            updateCaptureControls();
-            showToast("Semua pose selesai! Cek hasil atau ulangi jika ada yang kurang pas.");
-        }
-
-        // Mengulang 1 foto spesifik saat user klik thumbnail foto yang salah
-        async function retakeSpecificSlot(index) {
-            if (state.isShooting || !videoEl.srcObject) return;
-            state.isShooting = true;
-            showToast(`Bersiap mengulang Pose #${index + 1}...`);
-            await runCountdown(state.timerSeconds);
-            state.captures[index] = captureSingleTake();
-            state.isShooting = false;
-            renderThumbnailSlots();
-            updateCaptureControls();
-            showToast(`Pose #${index + 1} berhasil diperbarui!`);
-        }
-
-        function retakeLastPhoto() {
-            if (state.captures.length === 0 || state.isShooting) return;
-            retakeSpecificSlot(state.captures.length - 1);
-        }
-
-        function resetAllCaptures() {
-            if (state.isShooting) return;
-            state.captures = [];
-            renderThumbnailSlots();
-            updateCaptureControls();
-            showToast("Semua jepretan dihapus. Siap mulai ulang.");
-        }
-
         function renderThumbnailSlots() {
             const container = document.getElementById('captured-thumbnails');
+            if (!container) return;
             container.innerHTML = '';
 
             for (let i = 0; i < state.totalSlots; i++) {
                 const slot = document.createElement('div');
-                if (state.captures[i]) {
-                    slot.className = "relative aspect-[4/3] rounded-xl overflow-hidden border-2 border-pink-500 cursor-pointer group";
-                    slot.title = "Klik untuk mengulang pose ini";
-                    slot.onclick = () => retakeSpecificSlot(i);
+                const cap = state.captures[i];
+                if (cap) {
+                    slot.className = 'relative aspect-[4/3] rounded-xl overflow-hidden border-2 border-pink-500 shadow-xs cursor-pointer group';
+                    slot.title = `Klik untuk mengulang Pose #${i + 1}`;
+                    slot.onclick = () => retakeSingleSlot(i);
                     slot.innerHTML = `
-                        <img src="${state.captures[i].toDataURL('image/jpeg', 0.7)}" class="w-full h-full object-cover">
-                        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition">
-                            Ulangi #${i + 1}
+                        <img src="${cap.toDataURL('image/jpeg', 0.8)}" class="w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition">
+                            ↻ Ulangi #${i + 1}
                         </div>
+                        <span class="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-pink-500 text-white text-[9px] font-bold">#${i + 1}</span>
                     `;
                 } else {
-                    slot.className = "aspect-[4/3] rounded-xl border-2 border-dashed border-slate-300 bg-white flex items-center justify-center text-xs font-bold text-slate-400";
-                    slot.textContent = `#${i + 1}`;
+                    slot.className = 'aspect-[4/3] rounded-xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400';
+                    slot.innerHTML = `<span class="text-xs font-bold">#${i + 1}</span><span class="text-[9px]">Kosong</span>`;
                 }
                 container.appendChild(slot);
             }
@@ -1341,31 +1380,189 @@ function doGet(e) {
 
         function updateCaptureControls() {
             const count = state.captures.filter(Boolean).length;
-            document.getElementById('capture-progress-label').textContent = `Tersimpan (${count} / ${state.totalSlots})`;
+            const progressLabel = document.getElementById('capture-progress-label');
+            if (progressLabel) {
+                progressLabel.textContent = `Siap Foto (${count} / ${state.totalSlots})`;
+            }
             syncExternalPreviewWindow();
 
-            const btnRetakeLast = document.getElementById('btn-retake-last');
-            btnRetakeLast.classList.toggle('hidden', count === 0);
-
-            const btnNext = document.getElementById('btn-to-result');
-            btnNext.disabled = count < state.totalSlots;
-
+            const btnTakeAll = document.getElementById('btn-take-all');
             const btnTakeLabel = document.getElementById('btn-take-label');
-            btnTakeLabel.textContent = count === 0 ? "Ambil Semua Foto" : (count < state.totalSlots ? "Lanjutkan Foto" : "Semua Pose Lengkap");
+            const btnRetakeLast = document.getElementById('btn-retake-last');
+            const btnToResult = document.getElementById('btn-to-result');
+
+            if (btnTakeAll) btnTakeAll.disabled = state.isShooting;
+            if (btnTakeLabel) {
+                btnTakeLabel.textContent = count >= state.totalSlots ? 'Foto Ulang Semua' : (count > 0 ? 'Lanjutkan Foto' : 'Ambil Semua Foto');
+            }
+            if (btnRetakeLast) {
+                btnRetakeLast.classList.toggle('hidden', count === 0 || state.isShooting);
+            }
+            if (btnToResult) {
+                btnToResult.disabled = count < state.totalSlots || state.isShooting;
+            }
         }
 
-        /**
-         * HALAMAN HASIL: COMPOSITING FRAME + STIKER + HIGH QUALITY PRINT
-         */
-        async function goToResultEditor() {
+        function runCountdown(seconds) {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('countdown-overlay');
+                const digit = document.getElementById('countdown-digit');
+                let rem = seconds;
+
+                overlay.classList.remove('hidden');
+                digit.textContent = rem;
+                playShutterSound(false);
+                syncExternalPreviewWindow(rem, false);
+
+                const interval = setInterval(() => {
+                    rem--;
+                    if (rem > 0) {
+                        digit.textContent = rem;
+                        playShutterSound(false);
+                        syncExternalPreviewWindow(rem, false);
+                    } else {
+                        clearInterval(interval);
+                        overlay.classList.add('hidden');
+                        syncExternalPreviewWindow(0, false);
+                        resolve();
+                    }
+                }, 1000);
+            });
+        }
+
+        function captureSingleFrameFromVideo() {
+            if (!videoEl.videoWidth || !videoEl.videoHeight) return null;
+
+            const flash = document.getElementById('flash-overlay');
+            flash.classList.remove('flash-active');
+            void flash.offsetWidth;
+            flash.classList.add('flash-active');
+            playShutterSound(true);
+            syncExternalPreviewWindow(0, true);
+
+            const capCanvas = document.createElement('canvas');
+            capCanvas.width = videoEl.videoWidth;
+            capCanvas.height = videoEl.videoHeight;
+            const ctx = capCanvas.getContext('2d');
+
+            ctx.filter = state.filter || 'none';
+            if (state.isMirrored) {
+                ctx.translate(capCanvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+            ctx.drawImage(videoEl, 0, 0, capCanvas.width, capCanvas.height);
+            return capCanvas;
+        }
+
+        async function startAutoCaptureSequence() {
+            if (state.isShooting) return;
+            if (!videoEl.srcObject) {
+                showToast("Hubungkan kamera terlebih dahulu!", true);
+                initCamera();
+                return;
+            }
+
+            if (state.captures.filter(Boolean).length >= state.totalSlots) {
+                state.captures = [];
+                renderThumbnailSlots();
+            }
+
+            state.isShooting = true;
+            updateCaptureControls();
+
+            for (let i = 0; i < state.totalSlots; i++) {
+                if (!state.captures[i]) {
+                    document.getElementById('capture-progress-label').textContent = `Bersiap Pose #${i + 1} dari ${state.totalSlots}...`;
+                    syncExternalPreviewWindow();
+                    await runCountdown(state.timerSeconds);
+                    const shot = captureSingleFrameFromVideo();
+                    if (shot) {
+                        state.captures[i] = shot;
+                        renderThumbnailSlots();
+                        updateCaptureControls();
+                    }
+                }
+            }
+
+            state.isShooting = false;
+            updateCaptureControls();
+            showToast("Semua pose selesai diambil! Klik 'Lanjut Edit & Stiker'.");
+        }
+
+        async function retakeSingleSlot(slotIndex) {
+            if (state.isShooting) return;
+            if (!videoEl.srcObject) {
+                showToast("Kamera belum aktif!", true);
+                return;
+            }
+            state.isShooting = true;
+            updateCaptureControls();
+
+            document.getElementById('capture-progress-label').textContent = `Mengulang Pose #${slotIndex + 1}...`;
+            syncExternalPreviewWindow();
+            await runCountdown(state.timerSeconds);
+            const shot = captureSingleFrameFromVideo();
+            if (shot) {
+                state.captures[slotIndex] = shot;
+                renderThumbnailSlots();
+            }
+
+            state.isShooting = false;
+            updateCaptureControls();
+            showToast(`Pose #${slotIndex + 1} berhasil diperbarui!`);
+        }
+
+        function retakeLastPhoto() {
+            if (state.isShooting || state.captures.length === 0) return;
+            let lastIdx = -1;
+            for (let i = state.totalSlots - 1; i >= 0; i--) {
+                if (state.captures[i]) {
+                    lastIdx = i;
+                    break;
+                }
+            }
+            if (lastIdx >= 0) retakeSingleSlot(lastIdx);
+        }
+
+        function resetAllCaptures() {
+            if (state.isShooting) return;
+            state.captures = [];
+            renderThumbnailSlots();
+            updateCaptureControls();
+            showToast("Semua hasil jepretan direset.");
+        }
+
+        function goToResultEditor() {
+            if (state.captures.filter(Boolean).length < state.totalSlots) {
+                showToast(`Ambil ${state.totalSlots} foto terlebih dahulu!`, true);
+                return;
+            }
             state.sessionId = 'MUDA-' + Math.floor(1000 + Math.random() * 9000);
             document.getElementById('qr-session-code').textContent = `ID: #${state.sessionId}`;
             navigateTo('result');
-            await syncSessionToDatabaseAndSheet();
+            syncSessionToDatabaseAndSheet();
         }
 
         function getLayoutDimensions() {
-            // Dimensi High Resolution (300 DPI equivalent) sesuai jenis frame
+            const allFrames = [...state.customFrames, ...builtInFrames];
+            const activeFrame = allFrames.find(f => f.id === state.selectedFrameId);
+
+            // Jika memakai Custom Frame dengan Auto-Slot Detection, gunakan ukuran & rasio asli desain frame!
+            if (activeFrame && activeFrame.detectedSlots && activeFrame.detectedSlots.length > 0) {
+                const maxDim = 1800;
+                const scale = maxDim / Math.max(activeFrame.nativeWidth, activeFrame.nativeHeight);
+                const w = Math.round(activeFrame.nativeWidth * scale);
+                const h = Math.round(activeFrame.nativeHeight * scale);
+                return {
+                    w,
+                    h,
+                    cols: 1,
+                    rows: activeFrame.detectedSlots.length,
+                    printLabel: `Custom Frame (${w}x${h} px • ${activeFrame.detectedSlots.length} Slot) • High Res`
+                };
+            }
+
+            // Dimensi High Resolution (300 DPI equivalent) sesuai jenis frame bawaan
             switch (state.layout) {
                 case 'strip-3':
                     return { w: 600, h: 1500, cols: 1, rows: 3, printLabel: '2R Strip (5 x 12.7 cm) • High Res' };
@@ -1393,12 +1590,36 @@ function doGet(e) {
             const allFrames = [...state.customFrames, ...builtInFrames];
             const frame = allFrames.find(f => f.id === state.selectedFrameId) || builtInFrames[0];
 
-            // 1. Bersihkan & gambar Background Dasar Frame
+            // 1. Bersihkan canvas
             finalCtx.clearRect(0, 0, dim.w, dim.h);
+
+            // MODE A: CUSTOM FRAME DENGAN AUTO-DETECTED SLOTS (Tata letak bebas / asimetris / green screen / transparan)
+            if (frame.detectedSlots && frame.detectedSlots.length > 0) {
+                finalCtx.fillStyle = '#ffffff';
+                finalCtx.fillRect(0, 0, dim.w, dim.h);
+
+                // Gambar setiap foto tepat di dalam koordinat kotak yang terdeteksi
+                frame.detectedSlots.forEach((slot, idx) => {
+                    const photo = state.captures[idx];
+                    if (photo) {
+                        const sx = slot.x * dim.w;
+                        const sy = slot.y * dim.h;
+                        const sw = slot.w * dim.w;
+                        const sh = slot.h * dim.h;
+                        drawImageCover(finalCtx, photo, sx, sy, sw, sh);
+                    }
+                });
+
+                // Tempelkan desain frame di atas foto (lubang sudah transparan)
+                const overlaySource = frame.cleanedOverlay || frame.overlayImg;
+                finalCtx.drawImage(overlaySource, 0, 0, dim.w, dim.h);
+                return;
+            }
+
+            // MODE B: FRAME BAWAAN SMK MUHAMMADIYAH 2 AJIBARANG
             finalCtx.fillStyle = frame.bg;
             finalCtx.fillRect(0, 0, dim.w, dim.h);
 
-            // 2. Hitung posisi slot foto
             const pad = dim.cols === 1 ? 36 : 44;
             const gap = 24;
             const footerSpace = 170;
@@ -1408,13 +1629,11 @@ function doGet(e) {
             const cellW = availW / dim.cols;
             const cellH = availH / dim.rows;
 
-            const slotRects = [];
             let idx = 0;
             for (let r = 0; r < dim.rows; r++) {
                 for (let c = 0; c < dim.cols; c++) {
                     const x = pad + c * (cellW + gap);
                     const y = pad + r * (cellH + gap);
-                    slotRects.push({ x, y, w: cellW, h: cellH });
                     const photo = state.captures[idx];
                     if (photo) {
                         drawImageCover(finalCtx, photo, x, y, cellW, cellH);
@@ -1423,46 +1642,24 @@ function doGet(e) {
                 }
             }
 
-            // 3. Jika Admin mengunggah PNG Overlay, pastikan lubang foto tetap transparan agar foto tampil di dalam frame!
-            if (frame.overlayImg) {
-                const tempFrameCanvas = document.createElement('canvas');
-                tempFrameCanvas.width = dim.w;
-                tempFrameCanvas.height = dim.h;
-                const tCtx = tempFrameCanvas.getContext('2d');
-                tCtx.drawImage(frame.overlayImg, 0, 0, dim.w, dim.h);
+            finalCtx.strokeStyle = frame.accent;
+            finalCtx.lineWidth = 6;
+            finalCtx.strokeRect(14, 14, dim.w - 28, dim.h - 28);
 
-                // Jika frame yang diupload tidak memiliki lubang alpha transparan, lubangi otomatis area slot foto
-                if (frame.autoPunch) {
-                    tCtx.globalCompositeOperation = 'destination-out';
-                    slotRects.forEach(rect => {
-                        tCtx.fillStyle = '#000000';
-                        tCtx.fillRect(rect.x, rect.y, rect.w, rect.h);
-                    });
-                    tCtx.globalCompositeOperation = 'source-over';
-                }
+            const footerY = dim.h - footerSpace + 55;
+            finalCtx.fillStyle = frame.text;
+            finalCtx.textAlign = 'center';
+            finalCtx.font = `800 ${dim.cols === 1 ? 26 : 36}px "Plus Jakarta Sans", sans-serif`;
+            finalCtx.fillText('MUDASTUDIO', dim.w / 2, footerY);
 
-                finalCtx.drawImage(tempFrameCanvas, 0, 0, dim.w, dim.h);
-            } else {
-                // Branding Bawaan SMK Muhammadiyah 2 Ajibarang
-                finalCtx.strokeStyle = frame.accent;
-                finalCtx.lineWidth = 6;
-                finalCtx.strokeRect(14, 14, dim.w - 28, dim.h - 28);
+            finalCtx.font = `700 ${dim.cols === 1 ? 16 : 22}px Inter, sans-serif`;
+            finalCtx.fillText(frame.sub, dim.w / 2, footerY + 34);
 
-                const footerY = dim.h - footerSpace + 55;
-                finalCtx.fillStyle = frame.text;
-                finalCtx.textAlign = 'center';
-                finalCtx.font = `800 ${dim.cols === 1 ? 26 : 36}px "Plus Jakarta Sans", sans-serif`;
-                finalCtx.fillText('MUDASTUDIO', dim.w / 2, footerY);
-
-                finalCtx.font = `700 ${dim.cols === 1 ? 16 : 22}px Inter, sans-serif`;
-                finalCtx.fillText(frame.sub, dim.w / 2, footerY + 34);
-
-                const dateStr = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-                finalCtx.globalAlpha = 0.75;
-                finalCtx.font = `500 ${dim.cols === 1 ? 13 : 17}px Inter, sans-serif`;
-                finalCtx.fillText(`${dateStr} • #${state.sessionId}`, dim.w / 2, footerY + 64);
-                finalCtx.globalAlpha = 1.0;
-            }
+            const dateStr = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+            finalCtx.globalAlpha = 0.75;
+            finalCtx.font = `500 ${dim.cols === 1 ? 13 : 17}px Inter, sans-serif`;
+            finalCtx.fillText(`${dateStr} • #${state.sessionId}`, dim.w / 2, footerY + 64);
+            finalCtx.globalAlpha = 1.0;
         }
 
         // Helper agar foto terpotong rapi memenuhi kotak slot (object-fit: cover)
