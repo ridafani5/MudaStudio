@@ -580,20 +580,24 @@
 
                 <!-- 3. QR Code Unduh / Cetak & Tombol Print Presisi -->
                 <div class="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
-                    <div class="sm:col-span-5 flex flex-col items-center justify-center bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                        <div id="qrcode-container" class="bg-white p-2 rounded-xl shadow-xs"></div>
+                    <div class="sm:col-span-5 flex flex-col items-center justify-center bg-slate-50 p-3 rounded-2xl border border-slate-200 min-h-[190px]">
+                        <div id="qr-generating-loader" class="flex flex-col items-center justify-center py-6 text-center">
+                            <div class="w-8 h-8 border-3 border-pink-200 border-t-pink-500 rounded-full animate-spin mb-2"></div>
+                            <span class="text-[11px] font-bold text-slate-600">Menghubungkan Database...</span>
+                        </div>
+                        <div id="qrcode-container" class="hidden bg-white p-2 rounded-xl shadow-xs"></div>
                         <span class="text-[11px] font-bold text-slate-700 mt-2">Scan QR Unduh / Cetak</span>
                         <span id="qr-session-code" class="text-[10px] text-slate-400 font-mono">ID: #MUDA-001</span>
                     </div>
 
                     <div class="sm:col-span-7 flex flex-col gap-3">
                         <div>
-                            <div class="flex items-center justify-between">
+                            <div class="flex items-center justify-between gap-2">
                                 <h3 class="font-display font-bold text-sm text-slate-900">3. Cetak Langsung & QR Link</h3>
                                 <span id="db-sync-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Menyimpan ke Database...</span>
                             </div>
                             <p class="text-xs text-slate-500 mt-1 leading-relaxed">
-                                Scan QR langsung membuka halaman unduh foto ini di HP siswa. Atur URL domain Vercel kamu di bawah jika diakses dari lokal.
+                                QR Code otomatis muncul bersamaan setelah foto ber-frame, GIF, dan foto satuan tersimpan di database.
                             </p>
                         </div>
 
@@ -831,7 +835,6 @@ function doGet(e) {
 
             if (viewName === 'result') {
                 renderFinalComposite();
-                updateQRCode();
             }
         }
 
@@ -1394,8 +1397,13 @@ function doGet(e) {
 
         async function syncSessionToDatabaseAndSheet() {
             const badge = document.getElementById('db-sync-badge');
+            const qrLoader = document.getElementById('qr-generating-loader');
+            const qrBox = document.getElementById('qrcode-container');
+
+            if (qrLoader) qrLoader.classList.remove('hidden');
+            if (qrBox) qrBox.classList.add('hidden');
             if (badge) {
-                badge.textContent = 'Mengunggah Foto & GIF ke Drive...';
+                badge.textContent = 'Mengunggah ke Database...';
                 badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200';
             }
 
@@ -1406,6 +1414,7 @@ function doGet(e) {
 
             const allFrames = [...state.customFrames, ...builtInFrames];
             const frame = allFrames.find(f => f.id === state.selectedFrameId) || builtInFrames[0];
+            let dbSaved = false;
 
             // 1. Simpan ke Database Cloud (untuk akses cepat & isolasi per-session ID)
             try {
@@ -1424,6 +1433,7 @@ function doGet(e) {
                             takes: takesDataUrls,
                             createdAt: Date.now()
                         });
+                        dbSaved = true;
                     }
                 }
             } catch (err) {
@@ -1434,6 +1444,84 @@ function doGet(e) {
             if (state.sheetWebhookUrl) {
                 try {
                     const res = await fetch(state.sheetWebhookUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({
+                            sessionId: state.sessionId,
+                            layout: state.layout,
+                            frameName: frame.name,
+                            framedBase64: framedDataUrl,
+                            gifBase64: gifDataUrl,
+                            takesBase64: takesDataUrls
+                        })
+                    });
+                    const resJson = await res.json();
+                    if (resJson && resJson.framedUrl) {
+                        state.latestDriveUrl = resJson.framedUrl;
+                        dbSaved = true;
+                    }
+                } catch (e) {
+                    // Fallback no-cors bila browser memblokir bacaan respons POST, lalu verifikasi via GET
+                    await fetch(state.sheetWebhookUrl, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        body: JSON.stringify({
+                            sessionId: state.sessionId,
+                            layout: state.layout,
+                            frameName: frame.name,
+                            framedBase64: framedDataUrl,
+                            gifBase64: gifDataUrl,
+                            takesBase64: takesDataUrls
+                        })
+                    });
+                    dbSaved = true;
+                }
+            }
+
+            // 3. Setelah database & Drive selesai menerima data, baru tampilkan QR Code & status terhubung!
+            if (badge) {
+                badge.textContent = dbSaved ? '✓ Tersimpan di Database' : '✓ Siap Diunduh';
+                badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
+            }
+            updateQRCode();
+        }
+
+        function updateQRCode() {
+            const qrLoader = document.getElementById('qr-generating-loader');
+            const container = document.getElementById('qrcode-container');
+            if (!container) return;
+
+            if (qrLoader) qrLoader.classList.add('hidden');
+            container.classList.remove('hidden');
+            container.innerHTML = '';
+
+            const baseInput = document.getElementById('qr-base-url');
+            if (baseInput && !baseInput.value && window.location.protocol.startsWith('http')) {
+                baseInput.value = window.location.origin + window.location.pathname;
+            }
+
+            const baseUrl = (baseInput && baseInput.value.trim()) ? baseInput.value.trim() : '';
+            let qrTargetUrl = '';
+
+            if (baseUrl.startsWith('http')) {
+                const separator = baseUrl.includes('?') ? '&' : '?';
+                qrTargetUrl = `${baseUrl}${separator}session=${encodeURIComponent(state.sessionId)}`;
+            } else if (state.latestDriveUrl) {
+                qrTargetUrl = state.latestDriveUrl;
+            } else {
+                qrTargetUrl = `${state.sheetWebhookUrl}?session=${encodeURIComponent(state.sessionId)}`;
+            }
+
+            new QRCode(container, {
+                text: qrTargetUrl,
+                width: 132,
+                height: 132,
+                colorDark: "#0f172a",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+
         function extractDriveFileId(url) {
             if (!url) return '';
             const matchD = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
