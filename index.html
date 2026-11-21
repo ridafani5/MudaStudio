@@ -152,7 +152,7 @@
                 </div>
                 <div>
                     <span class="font-display font-extrabold text-xl tracking-tight text-slate-900">muda<span class="text-pink-500">studio</span></span>
-                    <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-pink-50 text-pink-600 rounded-full border border-pink-200">SMK Muh 2 Ajibarang</span>
+                    <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-pink-50 text-pink-600 rounded-full border border-pink-200">SMK Muh 2 Ajibarang • v3.0</span>
                 </div>
             </div>
 
@@ -1474,7 +1474,7 @@ function doGet(e) {
                         dbSaved = true;
                     }
                 } catch (e) {
-                    // Fallback no-cors bila browser memblokir bacaan respons POST, lalu verifikasi via GET
+                    // Fallback no-cors bila browser memblokir bacaan respons POST, lalu verifikasi via JSONP GET
                     await fetch(state.sheetWebhookUrl, {
                         method: 'POST',
                         mode: 'no-cors',
@@ -1487,6 +1487,12 @@ function doGet(e) {
                             takesBase64: takesDataUrls
                         })
                     });
+                    // Tunggu 2.5 detik agar Google Drive selesai menyimpan file lalu ambil URL-nya
+                    await new Promise(r => setTimeout(r, 2500));
+                    const verified = await fetchSheetSessionViaJsonp(state.sheetWebhookUrl, state.sessionId);
+                    if (verified && verified.framedUrl) {
+                        state.latestDriveUrl = verified.framedUrl;
+                    }
                     dbSaved = true;
                 }
             }
