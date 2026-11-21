@@ -644,10 +644,10 @@
                 <div class="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200">
                     <div class="flex items-center justify-between mb-1">
                         <label class="text-xs font-bold text-emerald-950">2. Koneksi Database Google Spreadsheet & Drive</label>
-                        <span id="sheet-status-pill" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Cloud Aktif</span>
+                        <span id="sheet-status-pill" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">✓ Terhubung ke Spreadsheet</span>
                     </div>
-                    <p class="text-[11px] text-slate-600 mb-2">Tempel URL <strong>Google Apps Script Web App</strong> agar setiap hasil foto & link QR otomatis tercatat di Google Spreadsheet dan tersimpan di Google Drive.</p>
-                    <input type="text" id="google-sheet-webhook-url" placeholder="https://script.google.com/macros/s/AKfycb.../exec" onchange="saveSheetWebhookConfig()" class="w-full px-3 py-2 text-xs rounded-xl border border-emerald-200 bg-white mb-2 focus:outline-none focus:border-emerald-500">
+                    <p class="text-[11px] text-slate-600 mb-2">URL <strong>Google Apps Script Web App</strong> sudah tertanam otomatis agar setiap hasil foto & link QR tercatat di Google Spreadsheet dan Google Drive.</p>
+                    <input type="text" id="google-sheet-webhook-url" value="https://script.google.com/macros/s/AKfycbwClq4MhacV8hKwftqvd3q7vPW2_61s1UUGioF8NTaGDLO14AZKhX9utYm8CTtdzNAypg/exec" placeholder="https://script.google.com/macros/s/AKfycb.../exec" onchange="saveSheetWebhookConfig()" class="w-full px-3 py-2 text-xs rounded-xl border border-emerald-200 bg-white mb-2 focus:outline-none focus:border-emerald-500">
                     <details class="text-[11px] text-slate-600 bg-white/80 p-2.5 rounded-xl border border-emerald-100">
                         <summary class="font-bold text-emerald-800 cursor-pointer">Lihat Kode Google Apps Script untuk Spreadsheet (Klik untuk salin)</summary>
                         <pre id="apps-script-snippet" class="mt-2 p-2 bg-slate-900 text-emerald-300 rounded-lg overflow-x-auto text-[10px] leading-relaxed select-all">function doPost(e) {
@@ -728,7 +728,7 @@
             stickers: [],            // Daftar stiker { id, text, x, y, size }
             sessionId: 'MUDA-' + Math.floor(1000 + Math.random() * 9000),
             cameraSourceType: 'laptop', // 'laptop' | 'dslr' | 'phone'
-            sheetWebhookUrl: '',
+            sheetWebhookUrl: 'https://script.google.com/macros/s/AKfycbwClq4MhacV8hKwftqvd3q7vPW2_61s1UUGioF8NTaGDLO14AZKhX9utYm8CTtdzNAypg/exec',
             latestDriveUrl: ''
         };
 
@@ -1340,27 +1340,12 @@
                     const { getDb, getAuth, appId, doc, setDoc } = window.firestoreOps;
                     const db = getDb();
                     const user = getAuth()?.currentUser;
-                    if (db && user) {
-                        const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', state.sessionId);
-                        await setDoc(sessionRef, {
-                            sessionId: state.sessionId,
-                            layout: state.layout,
-                            frameName: frame.name,
-                            framedImage: framedDataUrl,
-                            takes: takesDataUrls,
-                            createdAt: new Date().toISOString()
-                        });
-                    }
-                }
-            } catch (err) {
-                console.warn('Gagal simpan ke Cloud DB:', err);
-            }
-
-            // 2. Kirim ke Google Spreadsheet Webhook jika Admin sudah mengisi URL Apps Script
+            // 2. Kirim ke Google Spreadsheet Webhook secara otomatis
             if (state.sheetWebhookUrl) {
                 try {
                     const res = await fetch(state.sheetWebhookUrl, {
                         method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                         body: JSON.stringify({
                             sessionId: state.sessionId,
                             layout: state.layout,
@@ -1373,7 +1358,22 @@
                         state.latestDriveUrl = json.driveUrl;
                     }
                 } catch (err) {
-                    console.warn('Info Spreadsheet webhook:', err);
+                    // Fallback jika browser membatasi pembacaan respons redirect Apps Script
+                    try {
+                        await fetch(state.sheetWebhookUrl, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({
+                                sessionId: state.sessionId,
+                                layout: state.layout,
+                                frameName: frame.name,
+                                framedBase64: framedDataUrl
+                            })
+                        });
+                    } catch (e2) {
+                        console.warn('Info Spreadsheet webhook:', e2);
+                    }
                 }
             }
 
@@ -1474,6 +1474,10 @@
 
         function addTextSticker(label) {
             createDraggableSticker(label, false);
+        }
+
+        function addSticker(emoji) {
+            createDraggableSticker(emoji, true);
         }
 
         function createDraggableSticker(content, isEmoji) {
@@ -1625,27 +1629,8 @@
         }
 
         /**
-         * QR CODE UNDUH / CETAK & SISTEM PRINT SESUAI UKURAN FRAME
+         * SISTEM PRINT SESUAI UKURAN FRAME
          */
-        function updateQRCode() {
-            const qrContainer = document.getElementById('qrcode-container');
-            qrContainer.innerHTML = '';
-
-            const baseUrl = document.getElementById('qr-base-url').value.trim();
-            const qrPayload = baseUrl
-                ? `${baseUrl}?session=${state.sessionId}`
-                : `MudaStudio SMK Muhammadiyah 2 Ajibarang | ID Sesi: ${state.sessionId} | Layout: ${state.layout}`;
-
-            new QRCode(qrContainer, {
-                text: qrPayload,
-                width: 112,
-                height: 112,
-                colorDark: "#0f172a",
-                colorLight: "#ffffff",
-                correctLevel: QRCode.CorrectLevel.M
-            });
-        }
-
         function printHighQualityFrame() {
             const merged = buildMergedHighResCanvas();
             const dataUrl = merged.toDataURL('image/png', 1.0);
