@@ -593,18 +593,27 @@
                     <div class="sm:col-span-7 flex flex-col gap-3">
                         <div>
                             <div class="flex items-center justify-between gap-2">
-                                <h3 class="font-display font-bold text-sm text-slate-900">3. Cetak Langsung & QR Link</h3>
+                                <h3 class="font-display font-bold text-sm text-slate-900">3. Link Unduh Sesi, QR & Cetak</h3>
                                 <span id="db-sync-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Menyimpan ke Database...</span>
                             </div>
                             <p class="text-xs text-slate-500 mt-1 leading-relaxed">
-                                QR Code otomatis muncul bersamaan setelah foto ber-frame, GIF, dan foto satuan tersimpan di database.
+                                Link unduh muncul di bawah setelah tersimpan di database, dan QR Code otomatis dibuat dari link tersebut.
                             </p>
+                        </div>
+
+                        <!-- Link Hasil Sesi yang Terhubung ke QR -->
+                        <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Link Halaman Unduh Sesi (Tujuan QR):</label>
+                            <div class="flex items-center gap-1.5">
+                                <input type="text" id="qr-generated-link" readonly value="Menunggu penyimpanan database..." class="w-full px-2.5 py-1.5 text-[11px] font-mono bg-white text-slate-700 rounded-lg border border-slate-200 focus:outline-none">
+                                <a id="qr-open-link-btn" href="#" target="_blank" class="hidden shrink-0 px-3 py-1.5 rounded-lg bg-pink-500 hover:bg-pink-600 text-white text-[11px] font-bold transition">Buka</a>
+                            </div>
                         </div>
 
                         <!-- Input Optional Link Server / Vercel untuk QR -->
                         <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">URL Website Publik / Vercel (Otomatis terisi saat online):</label>
-                            <input type="text" id="qr-base-url" placeholder="https://mudastudio-smkmuh2.vercel.app" oninput="updateQRCode()" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-pink-500">
+                            <label class="block text-[10px] font-semibold text-slate-500 mb-1">Domain Website Vercel (Otomatis terdeteksi):</label>
+                            <input type="text" id="qr-base-url" placeholder="https://muda-studio-k1cw0p7zn-rpl-team3.vercel.app" oninput="updateQRCode()" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-pink-500">
                         </div>
 
                         <button onclick="printHighQualityFrame()" class="w-full py-3.5 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition">
@@ -1399,9 +1408,13 @@ function doGet(e) {
             const badge = document.getElementById('db-sync-badge');
             const qrLoader = document.getElementById('qr-generating-loader');
             const qrBox = document.getElementById('qrcode-container');
+            const linkInput = document.getElementById('qr-generated-link');
+            const openBtn = document.getElementById('qr-open-link-btn');
 
             if (qrLoader) qrLoader.classList.remove('hidden');
             if (qrBox) qrBox.classList.add('hidden');
+            if (linkInput) linkInput.value = 'Menyimpan foto & GIF ke database...';
+            if (openBtn) openBtn.classList.add('hidden');
             if (badge) {
                 badge.textContent = 'Mengunggah ke Database...';
                 badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200';
@@ -1510,6 +1523,15 @@ function doGet(e) {
                 qrTargetUrl = state.latestDriveUrl;
             } else {
                 qrTargetUrl = `${state.sheetWebhookUrl}?session=${encodeURIComponent(state.sessionId)}`;
+            }
+
+            // Tampilkan link langsung di kotak nomor 3 sebelum/bersamaan dengan render QR
+            const linkInput = document.getElementById('qr-generated-link');
+            const openBtn = document.getElementById('qr-open-link-btn');
+            if (linkInput) linkInput.value = qrTargetUrl;
+            if (openBtn) {
+                openBtn.href = qrTargetUrl;
+                openBtn.classList.remove('hidden');
             }
 
             new QRCode(container, {
