@@ -670,26 +670,33 @@
     var blob = Utilities.newBlob(Utilities.base64Decode(b64.split(',')[1]), mime, filename);
     var file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    return 'https://lh3.googleusercontent.com/d/' + file.getId();
+    return file.getId();
   }
 
-  var framedUrl = saveImg(data.framedBase64, data.sessionId + '-framed.jpg', 'image/jpeg');
-  var gifUrl = data.gifBase64 ? saveImg(data.gifBase64, data.sessionId + '.gif', 'image/gif') : '';
-  var takeUrls = (data.takesBase64 || []).map(function(t, i) {
+  var framedId = saveImg(data.framedBase64, data.sessionId + '-framed.jpg', 'image/jpeg');
+  var gifId = data.gifBase64 ? saveImg(data.gifBase64, data.sessionId + '.gif', 'image/gif') : '';
+  var takeIds = (data.takesBase64 || []).map(function(t, i) {
     return saveImg(t, data.sessionId + '-take-' + (i+1) + '.jpg', 'image/jpeg');
   });
+
+  var framedUrl = 'https://drive.google.com/uc?export=view&id=' + framedId;
+  var gifUrl = gifId ? 'https://drive.google.com/uc?export=view&id=' + gifId : '';
+  var takeUrls = takeIds.map(function(id) { return 'https://drive.google.com/uc?export=view&id=' + id; });
 
   sheet.appendRow([new Date(), data.sessionId, data.layout, data.frameName, framedUrl, gifUrl, JSON.stringify(takeUrls)]);
   return ContentService.createTextOutput(JSON.stringify({status: 'ok', framedUrl: framedUrl, gifUrl: gifUrl, takeUrls: takeUrls})).setMimeType(ContentService.MimeType.JSON);
 }
 
 function doGet(e) {
-  var sessionId = e.parameter.session;
+  var sessionId = String(e.parameter.session || '').trim();
+  var callback = e.parameter.callback;
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var rows = sheet.getDataRange().getValues();
+  var result = {status: 'not_found'};
+
   for (var i = rows.length - 1; i >= 1; i--) {
-    if (String(rows[i][1]) === String(sessionId)) {
-      return ContentService.createTextOutput(JSON.stringify({
+    if (String(rows[i][1]).trim() === sessionId) {
+      result = {
         status: 'ok',
         sessionId: rows[i][1],
         layout: rows[i][2],
@@ -697,10 +704,15 @@ function doGet(e) {
         framedUrl: rows[i][4],
         gifUrl: rows[i][5],
         takeUrls: JSON.parse(rows[i][6] || '[]')
-      })).setMimeType(ContentService.MimeType.JSON);
+      };
+      break;
     }
   }
-  return ContentService.createTextOutput(JSON.stringify({status: 'not_found'})).setMimeType(ContentService.MimeType.JSON);
+  var jsonStr = JSON.stringify(result);
+  if (callback) {
+    return ContentService.createTextOutput(callback + '(' + jsonStr + ')').setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(jsonStr).setMimeType(ContentService.MimeType.JSON);
 }</pre>
                     </details>
                 </div>
@@ -1422,69 +1434,50 @@ function doGet(e) {
             if (state.sheetWebhookUrl) {
                 try {
                     const res = await fetch(state.sheetWebhookUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                        body: JSON.stringify({
-                            sessionId: state.sessionId,
-                            layout: state.layout,
-                            frameName: frame.name,
-                            framedBase64: framedDataUrl,
-                            gifBase64: gifDataUrl,
-                            takesBase64: takesDataUrls
-                        })
-                    });
-                    const json = await res.json();
-                    if (json && json.framedUrl) {
-                        state.latestDriveUrl = json.framedUrl;
-                    }
-                } catch (err) {
-                    try {
-                        await fetch(state.sheetWebhookUrl, {
-                            method: 'POST',
-                            mode: 'no-cors',
-                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                            body: JSON.stringify({
-                                sessionId: state.sessionId,
-                                layout: state.layout,
-                                frameName: frame.name,
-                                framedBase64: framedDataUrl,
-                                gifBase64: gifDataUrl,
-                                takesBase64: takesDataUrls
-                            })
-                        });
-                    } catch (e2) {
-                        console.warn('Info Spreadsheet webhook:', e2);
-                    }
-                }
-            }
-
-            if (badge) {
-                badge.textContent = '✓ Tersimpan di Google Drive & QR Siap';
-                badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
-            }
-            updateQRCode();
+        function extractDriveFileId(url) {
+            if (!url) return '';
+            const matchD = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+            if (matchD) return matchD[1];
+            const matchId = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+            if (matchId) return matchId[1];
+            return '';
         }
 
-        function updateQRCode() {
-            const qrContainer = document.getElementById('qrcode-container');
-            qrContainer.innerHTML = '';
+        function formatDriveDisplayUrl(url) {
+            const id = extractDriveFileId(url);
+            return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1600` : url;
+        }
 
-            // QR selalu mengarah ke halaman Galeri Sesi eksklusif (?session=ID_UNIK)
-            const customBase = document.getElementById('qr-base-url').value.trim().replace(/\/$/, '');
-            const currentOrigin = (window.location.origin && window.location.origin.startsWith('http') && !window.location.origin.includes('usercontent'))
-                ? `${window.location.origin}${window.location.pathname}`
-                : '';
+        function formatDriveDownloadUrl(url) {
+            const id = extractDriveFileId(url);
+            return id ? `https://drive.google.com/uc?export=download&id=${id}` : url;
+        }
 
-            const targetBase = customBase || currentOrigin || 'https://mudastudio-smkmuh2.vercel.app';
-            const qrPayload = `${targetBase}?session=${encodeURIComponent(state.sessionId)}`;
+        function fetchSheetSessionViaJsonp(baseUrl, sessionId) {
+            return new Promise((resolve) => {
+                const cbName = 'mudaCb_' + Date.now();
+                const script = document.createElement('script');
+                const timeout = setTimeout(() => {
+                    delete window[cbName];
+                    script.remove();
+                    resolve(null);
+                }, 8000);
 
-            new QRCode(qrContainer, {
-                text: qrPayload,
-                width: 112,
-                height: 112,
-                colorDark: "#0f172a",
-                colorLight: "#ffffff",
-                correctLevel: QRCode.CorrectLevel.M
+                window[cbName] = (data) => {
+                    clearTimeout(timeout);
+                    delete window[cbName];
+                    script.remove();
+                    resolve(data);
+                };
+
+                script.src = `${baseUrl}?session=${encodeURIComponent(sessionId)}&callback=${cbName}`;
+                script.onerror = () => {
+                    clearTimeout(timeout);
+                    delete window[cbName];
+                    script.remove();
+                    resolve(null);
+                };
+                document.body.appendChild(script);
             });
         }
 
@@ -1499,10 +1492,13 @@ function doGet(e) {
 
             let sessionData = null;
 
-            // 1. Ambil langsung dari Google Spreadsheet & Google Drive via doGet(?session=ID)
+            // 1. Ambil langsung dari Google Spreadsheet via fetch + JSONP fallback (anti-CORS redirect)
             if (state.sheetWebhookUrl) {
                 try {
-                    const res = await fetch(`${state.sheetWebhookUrl}?session=${encodeURIComponent(sessionId)}`);
+                    const res = await fetch(`${state.sheetWebhookUrl}?session=${encodeURIComponent(sessionId)}`, {
+                        method: 'GET',
+                        redirect: 'follow'
+                    });
                     const json = await res.json();
                     if (json && json.status === 'ok' && json.framedUrl) {
                         sessionData = {
@@ -1512,12 +1508,19 @@ function doGet(e) {
                         };
                     }
                 } catch (e) {
-                    console.warn('Mencoba cadangan database cloud:', e);
+                    const jsonpData = await fetchSheetSessionViaJsonp(state.sheetWebhookUrl, sessionId);
+                    if (jsonpData && jsonpData.status === 'ok' && jsonpData.framedUrl) {
+                        sessionData = {
+                            framedImage: jsonpData.framedUrl,
+                            gifImage: jsonpData.gifUrl || '',
+                            takes: jsonpData.takeUrls || []
+                        };
+                    }
                 }
             }
 
-            // 2. Cadangan: Ambil dari Database Cloud jika Spreadsheet belum diperbarui doGet-nya
-            if (!sessionData) {
+            // 2. Cadangan: Ambil dari Database Cloud jika tersedia
+            if (!sessionData && window.firestoreOps && window.firestoreOps.getDb()) {
                 try {
                     await window.initCloudDatabase();
                     const { getDb, appId, doc, getDoc } = window.firestoreOps;
@@ -1529,32 +1532,39 @@ function doGet(e) {
                         }
                     }
                 } catch (err) {
-                    console.warn('Cadangan cloud error:', err);
+                    console.warn('Info database cloud:', err);
                 }
             }
 
             if (!sessionData) {
-                document.getElementById('qr-loading-spinner').innerHTML = `<p class="text-sm font-bold text-rose-500">Data sesi #${sessionId} tidak ditemukan. Pastikan kode Apps Script terbaru sudah di-Deploy!</p>`;
+                document.getElementById('qr-loading-spinner').innerHTML = `
+                    <p class="text-sm font-bold text-rose-500">Data sesi #${sessionId} belum terbaca dari Spreadsheet.</p>
+                    <p class="text-xs text-slate-500 max-w-xs">Pastikan di Google Apps Script kamu sudah menyalin kode terbaru (yang ada fungsi <strong>doGet</strong>) lalu klik <strong>Terapkan &rarr; Kelola deployment &rarr; Versi baru</strong>.</p>
+                `;
                 return;
             }
 
             document.getElementById('qr-loading-spinner').classList.add('hidden');
             document.getElementById('qr-content-ready').classList.remove('hidden');
 
-            // Tampilkan Foto Ber-Frame
+            // Tampilkan Foto Ber-Frame (gunakan thumbnail HD agar pasti tampil di semua HP & link download langsung)
             const mainImg = document.getElementById('qr-fetched-framed-img');
-            mainImg.src = sessionData.framedImage;
+            mainImg.src = formatDriveDisplayUrl(sessionData.framedImage);
+            mainImg.onerror = () => { mainImg.src = sessionData.framedImage; };
 
             const dlBtn = document.getElementById('qr-btn-save-framed');
-            dlBtn.href = sessionData.framedImage;
+            dlBtn.href = formatDriveDownloadUrl(sessionData.framedImage);
             dlBtn.download = `MudaStudio-${sessionId}-Framed.jpg`;
 
             // Tampilkan Versi GIF jika tersedia
             if (sessionData.gifImage) {
                 document.getElementById('qr-gif-section').classList.remove('hidden');
-                document.getElementById('qr-fetched-gif-img').src = sessionData.gifImage;
+                const gifImg = document.getElementById('qr-fetched-gif-img');
+                gifImg.src = formatDriveDisplayUrl(sessionData.gifImage);
+                gifImg.onerror = () => { gifImg.src = sessionData.gifImage; };
+
                 const gifBtn = document.getElementById('qr-btn-save-gif');
-                gifBtn.href = sessionData.gifImage;
+                gifBtn.href = formatDriveDownloadUrl(sessionData.gifImage);
                 gifBtn.download = `MudaStudio-${sessionId}.gif`;
             }
 
@@ -1562,13 +1572,15 @@ function doGet(e) {
             const takesGrid = document.getElementById('qr-takes-grid');
             takesGrid.innerHTML = '';
             (sessionData.takes || []).forEach((tUrl, i) => {
+                const previewSrc = formatDriveDisplayUrl(tUrl);
+                const downloadSrc = formatDriveDownloadUrl(tUrl);
                 const a = document.createElement('a');
-                a.href = tUrl;
+                a.href = downloadSrc;
                 a.target = '_blank';
                 a.download = `MudaStudio-${sessionId}-Pose-${i + 1}.jpg`;
                 a.className = 'block rounded-xl overflow-hidden border border-slate-200 bg-white shadow-xs';
                 a.innerHTML = `
-                    <img src="${tUrl}" class="w-full aspect-[4/3] object-cover">
+                    <img src="${previewSrc}" onerror="this.src='${tUrl}'" class="w-full aspect-[4/3] object-cover">
                     <span class="block text-center py-1.5 bg-slate-900 text-white text-[10px] font-bold">⬇️ Unduh Pose #${i + 1}</span>
                 `;
                 takesGrid.appendChild(a);
