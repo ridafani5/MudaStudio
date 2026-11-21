@@ -84,30 +84,41 @@
 
     <!-- ==================== VIEW 0: HALAMAN UNDUH QR DI HP SISWA (?session=...) ==================== -->
     <section id="view-qr-download" class="hidden min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-        <div class="max-w-md w-full bg-white rounded-3xl shadow-2xl border border-slate-100 p-6 text-center">
+        <div class="max-w-lg w-full bg-white rounded-3xl shadow-2xl border border-slate-100 p-6 text-center">
             <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-pink-50 text-pink-600 text-xs font-bold mb-3">
                 <span>📸 MudaStudio • SMK Muh 2 Ajibarang</span>
             </div>
-            <h2 class="font-display font-extrabold text-2xl text-slate-900 mb-1">Foto Kamu Sudah Siap!</h2>
-            <p id="qr-view-subtitle" class="text-xs text-slate-500 mb-4">Memuat hasil foto dari database...</p>
+            <h2 class="font-display font-extrabold text-2xl text-slate-900 mb-1">Galeri Foto Sesi Kamu</h2>
+            <p id="qr-view-subtitle" class="text-xs text-slate-500 mb-4">Memuat hasil foto eksklusif dari database...</p>
 
             <div id="qr-loading-spinner" class="py-12 flex flex-col items-center justify-center gap-3">
                 <div class="w-10 h-10 border-4 border-pink-200 border-t-pink-500 rounded-full animate-spin"></div>
-                <span class="text-xs font-semibold text-slate-500">Mengambil file dari server...</span>
+                <span class="text-xs font-semibold text-slate-500">Mengambil file dari Google Drive & Spreadsheet...</span>
             </div>
 
-            <div id="qr-content-ready" class="hidden space-y-4">
-                <div class="bg-slate-100 p-3 rounded-2xl border border-slate-200 flex justify-center">
-                    <img id="qr-fetched-framed-img" src="" alt="Hasil Photo Booth" class="max-h-[420px] w-auto rounded-xl shadow-md">
+            <div id="qr-content-ready" class="hidden space-y-5">
+                <!-- Preview Utama Foto Ber-Frame -->
+                <div class="bg-slate-100 p-4 rounded-2xl border border-slate-200 flex flex-col items-center">
+                    <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">1. Hasil Foto Dengan Frame</span>
+                    <img id="qr-fetched-framed-img" src="" alt="Hasil Photo Booth" class="max-h-[420px] w-auto rounded-xl shadow-md mb-3">
+                    <a id="qr-btn-save-framed" href="#" target="_blank" download="MudaStudio-Photo.png" class="w-full py-3 px-4 rounded-xl bg-[#ff477e] hover:bg-[#f0356d] text-white font-bold text-xs shadow-lg shadow-pink-500/25 flex items-center justify-center gap-2 transition">
+                        <span>⬇️ Unduh Foto Ber-Frame (High Res)</span>
+                    </a>
                 </div>
 
-                <a id="qr-btn-save-framed" href="#" download="MudaStudio-Photo.png" class="w-full py-3.5 px-5 rounded-2xl bg-[#ff477e] hover:bg-[#f0356d] text-white font-bold text-sm shadow-lg shadow-pink-500/25 flex items-center justify-center gap-2 transition">
-                    <span>⬇️ Simpan Foto Ber-Frame ke HP</span>
-                </a>
+                <!-- Preview & Unduh Versi GIF -->
+                <div id="qr-gif-section" class="hidden bg-indigo-50/70 p-4 rounded-2xl border border-indigo-100 flex flex-col items-center">
+                    <span class="text-[11px] font-bold text-indigo-700 uppercase tracking-wider mb-2">2. Versi Animasi GIF</span>
+                    <img id="qr-fetched-gif-img" src="" alt="Animasi GIF" class="max-h-[240px] w-auto rounded-xl shadow-sm mb-3">
+                    <a id="qr-btn-save-gif" href="#" target="_blank" download="MudaStudio-Animasi.gif" class="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2 transition">
+                        <span>🎞️ Unduh Versi GIF Bergerak</span>
+                    </a>
+                </div>
 
-                <div id="qr-takes-section" class="pt-2 border-t border-slate-100 text-left">
-                    <p class="text-xs font-bold text-slate-700 mb-2">Foto Satuan (Per-Take):</p>
-                    <div id="qr-takes-grid" class="grid grid-cols-2 gap-2"></div>
+                <!-- Foto Satuan (Per-Take) -->
+                <div id="qr-takes-section" class="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 text-left">
+                    <p class="text-xs font-bold text-slate-800 mb-2.5">3. Foto Satuan (Per-Take):</p>
+                    <div id="qr-takes-grid" class="grid grid-cols-2 gap-2.5"></div>
                 </div>
             </div>
 
@@ -649,16 +660,47 @@
                     <p class="text-[11px] text-slate-600 mb-2">URL <strong>Google Apps Script Web App</strong> sudah tertanam otomatis agar setiap hasil foto & link QR tercatat di Google Spreadsheet dan Google Drive.</p>
                     <input type="text" id="google-sheet-webhook-url" value="https://script.google.com/macros/s/AKfycbwClq4MhacV8hKwftqvd3q7vPW2_61s1UUGioF8NTaGDLO14AZKhX9utYm8CTtdzNAypg/exec" placeholder="https://script.google.com/macros/s/AKfycb.../exec" onchange="saveSheetWebhookConfig()" class="w-full px-3 py-2 text-xs rounded-xl border border-emerald-200 bg-white mb-2 focus:outline-none focus:border-emerald-500">
                     <details class="text-[11px] text-slate-600 bg-white/80 p-2.5 rounded-xl border border-emerald-100">
-                        <summary class="font-bold text-emerald-800 cursor-pointer">Lihat Kode Google Apps Script untuk Spreadsheet (Klik untuk salin)</summary>
+                        <summary class="font-bold text-emerald-800 cursor-pointer">Lihat Kode Google Apps Script untuk Spreadsheet & QR (Wajib pakai versi ini)</summary>
                         <pre id="apps-script-snippet" class="mt-2 p-2 bg-slate-900 text-emerald-300 rounded-lg overflow-x-auto text-[10px] leading-relaxed select-all">function doPost(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var data = JSON.parse(e.postData.contents);
   var folder = DriveApp.getRootFolder();
-  var blob = Utilities.newBlob(Utilities.base64Decode(data.framedBase64.split(',')[1]), 'image/png', data.sessionId + '.png');
-  var file = folder.createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  sheet.appendRow([new Date(), data.sessionId, data.layout, data.frameName, file.getUrl()]);
-  return ContentService.createTextOutput(JSON.stringify({status: 'ok', driveUrl: file.getUrl()})).setMimeType(ContentService.MimeType.JSON);
+  
+  function saveImg(b64, filename, mime) {
+    var blob = Utilities.newBlob(Utilities.base64Decode(b64.split(',')[1]), mime, filename);
+    var file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return 'https://lh3.googleusercontent.com/d/' + file.getId();
+  }
+
+  var framedUrl = saveImg(data.framedBase64, data.sessionId + '-framed.jpg', 'image/jpeg');
+  var gifUrl = data.gifBase64 ? saveImg(data.gifBase64, data.sessionId + '.gif', 'image/gif') : '';
+  var takeUrls = (data.takesBase64 || []).map(function(t, i) {
+    return saveImg(t, data.sessionId + '-take-' + (i+1) + '.jpg', 'image/jpeg');
+  });
+
+  sheet.appendRow([new Date(), data.sessionId, data.layout, data.frameName, framedUrl, gifUrl, JSON.stringify(takeUrls)]);
+  return ContentService.createTextOutput(JSON.stringify({status: 'ok', framedUrl: framedUrl, gifUrl: gifUrl, takeUrls: takeUrls})).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  var sessionId = e.parameter.session;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var rows = sheet.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][1]) === String(sessionId)) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'ok',
+        sessionId: rows[i][1],
+        layout: rows[i][2],
+        frameName: rows[i][3],
+        framedUrl: rows[i][4],
+        gifUrl: rows[i][5],
+        takeUrls: JSON.parse(rows[i][6] || '[]')
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+  return ContentService.createTextOutput(JSON.stringify({status: 'not_found'})).setMimeType(ContentService.MimeType.JSON);
 }</pre>
                     </details>
                 </div>
@@ -1319,28 +1361,64 @@
         /**
          * SINKRONISASI KE DATABASE CLOUD & GOOGLE SPREADSHEET + QR CODE HALAMAN UNDUH
          */
+        function createGifDataUrlPromise() {
+            return new Promise((resolve) => {
+                if (!state.captures || state.captures.length === 0 || typeof gifshot === 'undefined') {
+                    resolve('');
+                    return;
+                }
+                const images = state.captures.map(c => c.toDataURL('image/jpeg', 0.78));
+                gifshot.createGIF({
+                    images: images,
+                    gifWidth: 480,
+                    gifHeight: 360,
+                    interval: 0.45,
+                    numFrames: images.length
+                }, (obj) => {
+                    resolve(!obj.error ? obj.image : '');
+                });
+            });
+        }
+
         async function syncSessionToDatabaseAndSheet() {
             const badge = document.getElementById('db-sync-badge');
             if (badge) {
-                badge.textContent = 'Menyimpan ke Database...';
+                badge.textContent = 'Mengunggah Foto & GIF ke Drive...';
                 badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200';
             }
 
             const merged = buildMergedHighResCanvas();
-            // Kompresi optimal agar cepat diunggah ke database & cepat dibuka di HP siswa
-            const framedDataUrl = merged.toDataURL('image/jpeg', 0.86);
-            const takesDataUrls = state.captures.map(c => c.toDataURL('image/jpeg', 0.72));
+            const framedDataUrl = merged.toDataURL('image/jpeg', 0.88);
+            const takesDataUrls = state.captures.map(c => c.toDataURL('image/jpeg', 0.78));
+            const gifDataUrl = await createGifDataUrlPromise();
 
             const allFrames = [...state.customFrames, ...builtInFrames];
             const frame = allFrames.find(f => f.id === state.selectedFrameId) || builtInFrames[0];
 
-            // 1. Simpan ke Database Cloud (agar QR Code ?session=ID langsung memuat foto di HP)
+            // 1. Simpan ke Database Cloud (untuk akses cepat & isolasi per-session ID)
             try {
                 if (window.firestoreOps && window.firestoreOps.getDb()) {
                     const { getDb, getAuth, appId, doc, setDoc } = window.firestoreOps;
                     const db = getDb();
                     const user = getAuth()?.currentUser;
-            // 2. Kirim ke Google Spreadsheet Webhook secara otomatis
+                    if (db && user) {
+                        const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', state.sessionId);
+                        await setDoc(sessionRef, {
+                            sessionId: state.sessionId,
+                            layout: state.layout,
+                            frameName: frame.name,
+                            framedImage: framedDataUrl,
+                            gifImage: gifDataUrl,
+                            takes: takesDataUrls,
+                            createdAt: Date.now()
+                        });
+                    }
+                }
+            } catch (err) {
+                console.warn('Info penyimpanan cloud:', err);
+            }
+
+            // 2. Kirim ke Google Spreadsheet + Google Drive Web App (menyimpan Framed, GIF, dan Per-Take)
             if (state.sheetWebhookUrl) {
                 try {
                     const res = await fetch(state.sheetWebhookUrl, {
@@ -1350,15 +1428,16 @@
                             sessionId: state.sessionId,
                             layout: state.layout,
                             frameName: frame.name,
-                            framedBase64: framedDataUrl
+                            framedBase64: framedDataUrl,
+                            gifBase64: gifDataUrl,
+                            takesBase64: takesDataUrls
                         })
                     });
                     const json = await res.json();
-                    if (json && json.driveUrl) {
-                        state.latestDriveUrl = json.driveUrl;
+                    if (json && json.framedUrl) {
+                        state.latestDriveUrl = json.framedUrl;
                     }
                 } catch (err) {
-                    // Fallback jika browser membatasi pembacaan respons redirect Apps Script
                     try {
                         await fetch(state.sheetWebhookUrl, {
                             method: 'POST',
@@ -1368,7 +1447,9 @@
                                 sessionId: state.sessionId,
                                 layout: state.layout,
                                 frameName: frame.name,
-                                framedBase64: framedDataUrl
+                                framedBase64: framedDataUrl,
+                                gifBase64: gifDataUrl,
+                                takesBase64: takesDataUrls
                             })
                         });
                     } catch (e2) {
@@ -1378,7 +1459,7 @@
             }
 
             if (badge) {
-                badge.textContent = state.sheetWebhookUrl ? '✓ Tersimpan di Spreadsheet & Cloud' : '✓ Tersimpan di Database QR';
+                badge.textContent = '✓ Tersimpan di Google Drive & QR Siap';
                 badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
             }
             updateQRCode();
@@ -1388,22 +1469,14 @@
             const qrContainer = document.getElementById('qrcode-container');
             qrContainer.innerHTML = '';
 
-            // Gunakan URL publik dari input atau otomatis URL website saat sudah di-deploy ke Vercel
+            // QR selalu mengarah ke halaman Galeri Sesi eksklusif (?session=ID_UNIK)
             const customBase = document.getElementById('qr-base-url').value.trim().replace(/\/$/, '');
-            const currentOrigin = (window.location.origin && window.location.origin.startsWith('http'))
+            const currentOrigin = (window.location.origin && window.location.origin.startsWith('http') && !window.location.origin.includes('usercontent'))
                 ? `${window.location.origin}${window.location.pathname}`
                 : '';
 
-            const targetBase = customBase || currentOrigin;
-            let qrPayload = '';
-
-            if (state.latestDriveUrl) {
-                qrPayload = state.latestDriveUrl;
-            } else if (targetBase) {
-                qrPayload = `${targetBase}?session=${encodeURIComponent(state.sessionId)}`;
-            } else {
-                qrPayload = `https://mudastudio-smkmuh2.vercel.app/?session=${encodeURIComponent(state.sessionId)}`;
-            }
+            const targetBase = customBase || currentOrigin || 'https://mudastudio-smkmuh2.vercel.app';
+            const qrPayload = `${targetBase}?session=${encodeURIComponent(state.sessionId)}`;
 
             new QRCode(qrContainer, {
                 text: qrPayload,
@@ -1412,6 +1485,93 @@
                 colorDark: "#0f172a",
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+
+        async function loadQrDownloadSession(sessionId) {
+            document.getElementById('view-dashboard').classList.add('hidden');
+            document.getElementById('view-studio').classList.add('hidden');
+            document.getElementById('view-result').classList.add('hidden');
+            document.querySelector('header').classList.add('hidden');
+            document.getElementById('view-qr-download').classList.remove('hidden');
+
+            document.getElementById('qr-view-subtitle').textContent = `Sesi Eksklusif #${sessionId} • SMK Muhammadiyah 2 Ajibarang`;
+
+            let sessionData = null;
+
+            // 1. Ambil langsung dari Google Spreadsheet & Google Drive via doGet(?session=ID)
+            if (state.sheetWebhookUrl) {
+                try {
+                    const res = await fetch(`${state.sheetWebhookUrl}?session=${encodeURIComponent(sessionId)}`);
+                    const json = await res.json();
+                    if (json && json.status === 'ok' && json.framedUrl) {
+                        sessionData = {
+                            framedImage: json.framedUrl,
+                            gifImage: json.gifUrl || '',
+                            takes: json.takeUrls || []
+                        };
+                    }
+                } catch (e) {
+                    console.warn('Mencoba cadangan database cloud:', e);
+                }
+            }
+
+            // 2. Cadangan: Ambil dari Database Cloud jika Spreadsheet belum diperbarui doGet-nya
+            if (!sessionData) {
+                try {
+                    await window.initCloudDatabase();
+                    const { getDb, appId, doc, getDoc } = window.firestoreOps;
+                    const db = getDb();
+                    if (db) {
+                        const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', sessionId));
+                        if (snap.exists()) {
+                            sessionData = snap.data();
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Cadangan cloud error:', err);
+                }
+            }
+
+            if (!sessionData) {
+                document.getElementById('qr-loading-spinner').innerHTML = `<p class="text-sm font-bold text-rose-500">Data sesi #${sessionId} tidak ditemukan. Pastikan kode Apps Script terbaru sudah di-Deploy!</p>`;
+                return;
+            }
+
+            document.getElementById('qr-loading-spinner').classList.add('hidden');
+            document.getElementById('qr-content-ready').classList.remove('hidden');
+
+            // Tampilkan Foto Ber-Frame
+            const mainImg = document.getElementById('qr-fetched-framed-img');
+            mainImg.src = sessionData.framedImage;
+
+            const dlBtn = document.getElementById('qr-btn-save-framed');
+            dlBtn.href = sessionData.framedImage;
+            dlBtn.download = `MudaStudio-${sessionId}-Framed.jpg`;
+
+            // Tampilkan Versi GIF jika tersedia
+            if (sessionData.gifImage) {
+                document.getElementById('qr-gif-section').classList.remove('hidden');
+                document.getElementById('qr-fetched-gif-img').src = sessionData.gifImage;
+                const gifBtn = document.getElementById('qr-btn-save-gif');
+                gifBtn.href = sessionData.gifImage;
+                gifBtn.download = `MudaStudio-${sessionId}.gif`;
+            }
+
+            // Tampilkan Foto Satuan Per-Take
+            const takesGrid = document.getElementById('qr-takes-grid');
+            takesGrid.innerHTML = '';
+            (sessionData.takes || []).forEach((tUrl, i) => {
+                const a = document.createElement('a');
+                a.href = tUrl;
+                a.target = '_blank';
+                a.download = `MudaStudio-${sessionId}-Pose-${i + 1}.jpg`;
+                a.className = 'block rounded-xl overflow-hidden border border-slate-200 bg-white shadow-xs';
+                a.innerHTML = `
+                    <img src="${tUrl}" class="w-full aspect-[4/3] object-cover">
+                    <span class="block text-center py-1.5 bg-slate-900 text-white text-[10px] font-bold">⬇️ Unduh Pose #${i + 1}</span>
+                `;
+                takesGrid.appendChild(a);
             });
         }
 
