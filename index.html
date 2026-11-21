@@ -1344,7 +1344,7 @@ function doGet(e) {
             if (urlInput && urlInput.value.trim()) {
                 state.sheetWebhookUrl = urlInput.value.trim();
                 localStorage.setItem('mudastudio_sheet_url', state.sheetWebhookUrl);
-                showToast("URL Google Spreadsheet berhasil disimpan!");
+                showToast("URL Google Spreadsheet Versi 4 berhasil diperbarui!");
             }
         }
 
@@ -2222,6 +2222,13 @@ function doGet(e) {
 
         // Inisialisasi awal
         window.onload = async () => {
+            // Pastikan URL Google Apps Script Versi 4 terbaru selalu aktif
+            const latestScriptUrl = 'https://script.google.com/macros/s/AKfycbwClq4MhacV8hKwftqvd3q7vPW2_61s1UUGioF8NTaGDLO14AZKhX9utYm8CTtdzNAypg/exec';
+            state.sheetWebhookUrl = latestScriptUrl;
+            localStorage.setItem('mudastudio_sheet_url', latestScriptUrl);
+            const webhookInput = document.getElementById('google-sheet-webhook-url');
+            if (webhookInput) webhookInput.value = latestScriptUrl;
+
             if (window.initCloudDatabase) {
                 await window.initCloudDatabase();
             }
