@@ -1575,56 +1575,6 @@ function doGet(e) {
             });
         }
 
-        async function loadQrDownloadSession(sessionId) {
-            document.getElementById('view-dashboard').classList.add('hidden');
-            document.getElementById('view-studio').classList.add('hidden');
-            document.getElementById('view-result').classList.add('hidden');
-            document.querySelector('header').classList.add('hidden');
-            document.getElementById('view-qr-download').classList.remove('hidden');
-
-            document.getElementById('qr-view-subtitle').textContent = `Sesi Foto #${sessionId} • SMK Muhammadiyah 2 Ajibarang`;
-
-            try {
-                await window.initCloudDatabase();
-                const { getDb, appId, doc, getDoc } = window.firestoreOps;
-                const db = getDb();
-                if (!db) throw new Error('Database belum siap');
-
-                const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', sessionId));
-                if (!snap.exists()) {
-                    document.getElementById('qr-loading-spinner').innerHTML = `<p class="text-sm font-bold text-rose-500">Data sesi #${sessionId} tidak ditemukan atau sudah kedaluwarsa.</p>`;
-                    return;
-                }
-
-                const data = snap.data();
-                document.getElementById('qr-loading-spinner').classList.add('hidden');
-                document.getElementById('qr-content-ready').classList.remove('hidden');
-
-                const mainImg = document.getElementById('qr-fetched-framed-img');
-                mainImg.src = data.framedImage;
-
-                const dlBtn = document.getElementById('qr-btn-save-framed');
-                dlBtn.href = data.framedImage;
-                dlBtn.download = `MudaStudio-${sessionId}.jpg`;
-
-                const takesGrid = document.getElementById('qr-takes-grid');
-                takesGrid.innerHTML = '';
-                (data.takes || []).forEach((tUrl, i) => {
-                    const a = document.createElement('a');
-                    a.href = tUrl;
-                    a.download = `MudaStudio-${sessionId}-Pose-${i + 1}.jpg`;
-                    a.className = 'block rounded-xl overflow-hidden border border-slate-200 relative group';
-                    a.innerHTML = `
-                        <img src="${tUrl}" class="w-full aspect-[4/3] object-cover">
-                        <span class="block text-center py-1 bg-slate-900 text-white text-[10px] font-bold">⬇️ Pose #${i + 1}</span>
-                    `;
-                    takesGrid.appendChild(a);
-                });
-            } catch (err) {
-                document.getElementById('qr-loading-spinner').innerHTML = `<p class="text-xs text-rose-500 font-semibold">Gagal memuat foto: ${err.message}</p>`;
-            }
-        }
-
         function exitQrDownloadMode() {
             window.history.replaceState({}, document.title, window.location.pathname);
             document.getElementById('view-qr-download').classList.add('hidden');
