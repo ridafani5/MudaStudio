@@ -282,6 +282,9 @@
                 <button onclick="toggleMirror()" id="studio-mirror-btn" class="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 transition">
                     Cermin: ON
                 </button>
+                <button onclick="openExternalPreviewWindow()" class="px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-xs font-bold text-indigo-700 flex items-center gap-1.5 transition" title="Buka jendela kamera khusus untuk monitor kedua peserta">
+                    <span>🖥️ Layar Preview</span>
+                </button>
             </div>
         </div>
 
@@ -612,8 +615,8 @@
 
                         <!-- Input Optional Link Server / Vercel untuk QR -->
                         <div>
-                            <label class="block text-[10px] font-semibold text-slate-500 mb-1">Domain Website Vercel (Otomatis terdeteksi):</label>
-                            <input type="text" id="qr-base-url" placeholder="https://muda-studio-k1cw0p7zn-rpl-team3.vercel.app" oninput="updateQRCode()" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-pink-500">
+                            <label class="block text-[10px] font-semibold text-slate-500 mb-1">Domain Publik Vercel (Tanpa Login/ACC):</label>
+                            <input type="text" id="qr-base-url" placeholder="https://muda-studio.vercel.app" oninput="savePublicVercelUrl()" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-pink-500">
                         </div>
 
                         <button onclick="printHighQualityFrame()" class="w-full py-3.5 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition">
@@ -796,7 +799,8 @@ function doGet(e) {
             sessionId: 'MUDA-' + Math.floor(1000 + Math.random() * 9000),
             cameraSourceType: 'laptop', // 'laptop' | 'dslr' | 'phone'
             sheetWebhookUrl: 'https://script.google.com/macros/s/AKfycbwClq4MhacV8hKwftqvd3q7vPW2_61s1UUGioF8NTaGDLO14AZKhX9utYm8CTtdzNAypg/exec',
-            latestDriveUrl: ''
+            latestDriveUrl: '',
+            externalPreviewWin: null
         };
 
         // Daftar Frame Bawaan SMK Muhammadiyah 2 Ajibarang
@@ -938,6 +942,7 @@ function doGet(e) {
                 videoEl.onloadedmetadata = () => {
                     document.getElementById('camera-placeholder').classList.add('hidden');
                     populateCameraDevices();
+                    syncExternalPreviewWindow();
                 };
             } catch (err) {
                 document.getElementById('camera-msg').textContent = "Kamera belum terdeteksi. Pastikan izin kamera aktif atau kabel USB DSLR sudah terhubung.";
@@ -953,6 +958,94 @@ function doGet(e) {
             state.isMirrored = !state.isMirrored;
             videoEl.classList.toggle('mirror-video', state.isMirrored);
             document.getElementById('studio-mirror-btn').textContent = `Cermin: ${state.isMirrored ? 'ON' : 'OFF'}`;
+            syncExternalPreviewWindow();
+        }
+
+        /**
+         * JENDELA MONITOR KEDUA KHUSUS LIVE PREVIEW PESERTA
+         */
+        function openExternalPreviewWindow() {
+            if (state.externalPreviewWin && !state.externalPreviewWin.closed) {
+                state.externalPreviewWin.focus();
+                syncExternalPreviewWindow();
+                return;
+            }
+
+            const extWin = window.open('', 'MudaStudioExternalPreview', 'width=1024,height=768,menubar=no,toolbar=no,location=no,status=no');
+            if (!extWin) {
+                showToast("Izinkan pop-up browser untuk membuka Layar Preview kedua!", true);
+                return;
+            }
+
+            state.externalPreviewWin = extWin;
+            extWin.document.write(`
+                <!DOCTYPE html>
+                <html lang="id">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Live Preview Peserta - MudaStudio SMK Muh 2 Ajibarang</title>
+                    <style>
+                        * { box-sizing: border-box; margin: 0; padding: 0; }
+                        body { background: #090d16; color: white; font-family: system-ui, -apple-system, sans-serif; height: 100vh; overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative; }
+                        video { width: 100vw; height: 100vh; object-fit: cover; transition: transform 0.2s; }
+                        .mirror { transform: scaleX(-1); }
+                        .badge { position: absolute; top: 24px; left: 24px; background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(8px); padding: 10px 20px; border-radius: 999px; font-weight: 700; font-size: 16px; border: 1px solid rgba(255,255,255,0.15); display: flex; align-items: center; gap: 10px; }
+                        .dot { width: 10px; height: 10px; border-radius: 50%; background: #ff477e; }
+                        #ext-countdown { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); font-size: 22vw; font-weight: 900; text-shadow: 0 12px 40px rgba(0,0,0,0.9); }
+                        #ext-flash { position: absolute; inset: 0; background: white; opacity: 0; pointer-events: none; transition: opacity 0.35s ease-out; }
+                    </style>
+                </head>
+                <body>
+                    <video id="ext-video" autoplay playsinline muted></video>
+                    <div class="badge"><span class="dot"></span><span id="ext-status">MudaStudio • SMK Muh 2 Ajibarang (Tekan F11 untuk Fullscreen)</span></div>
+                    <div id="ext-countdown">3</div>
+                    <div id="ext-flash"></div>
+                </body>
+                </html>
+            `);
+            extWin.document.close();
+            setTimeout(syncExternalPreviewWindow, 150);
+            showToast("Layar Preview terbuka! Geser ke monitor kedua lalu tekan F11.");
+        }
+
+        function syncExternalPreviewWindow(countdownVal = null, triggerFlash = false) {
+            const win = state.externalPreviewWin;
+            if (!win || win.closed) return;
+            try {
+                const extVid = win.document.getElementById('ext-video');
+                if (extVid && videoEl.srcObject && extVid.srcObject !== videoEl.srcObject) {
+                    extVid.srcObject = videoEl.srcObject;
+                }
+                if (extVid) {
+                    extVid.classList.toggle('mirror', state.isMirrored);
+                    extVid.style.filter = state.filter;
+                }
+                const extStatus = win.document.getElementById('ext-status');
+                const mainStatus = document.getElementById('capture-progress-label');
+                if (extStatus && mainStatus) {
+                    extStatus.textContent = `MudaStudio • ${mainStatus.textContent}`;
+                }
+                const extCd = win.document.getElementById('ext-countdown');
+                if (extCd) {
+                    if (countdownVal !== null && countdownVal > 0) {
+                        extCd.style.display = 'flex';
+                        extCd.textContent = countdownVal;
+                    } else {
+                        extCd.style.display = 'none';
+                    }
+                }
+                if (triggerFlash) {
+                    const fl = win.document.getElementById('ext-flash');
+                    if (fl) {
+                        fl.style.transition = 'none';
+                        fl.style.opacity = '1';
+                        setTimeout(() => {
+                            fl.style.transition = 'opacity 0.4s ease-out';
+                            fl.style.opacity = '0';
+                        }, 30);
+                    }
+                }
+            } catch (e) {}
         }
 
         /**
@@ -993,6 +1086,7 @@ function doGet(e) {
         function setCameraFilter(filterCss, btnEl) {
             state.filter = filterCss;
             videoEl.style.filter = filterCss;
+            syncExternalPreviewWindow();
             document.querySelectorAll('.filter-chip').forEach(c => {
                 c.classList.remove('border-pink-500', 'bg-pink-50', 'text-pink-700', 'font-bold');
                 c.classList.add('border-slate-200', 'text-slate-700');
@@ -1134,6 +1228,7 @@ function doGet(e) {
             void flash.offsetWidth;
             flash.classList.add('flash-active');
             playShutterSound(true);
+            syncExternalPreviewWindow(null, true);
 
             return canvas;
         }
@@ -1146,15 +1241,18 @@ function doGet(e) {
                 overlay.classList.remove('hidden');
                 digit.textContent = left;
                 playShutterSound(false);
+                syncExternalPreviewWindow(left, false);
 
                 const timer = setInterval(() => {
                     left--;
                     if (left > 0) {
                         digit.textContent = left;
                         playShutterSound(false);
+                        syncExternalPreviewWindow(left, false);
                     } else {
                         clearInterval(timer);
                         overlay.classList.add('hidden');
+                        syncExternalPreviewWindow(null, false);
                         resolve();
                     }
                 }, 1000);
@@ -1244,6 +1342,7 @@ function doGet(e) {
         function updateCaptureControls() {
             const count = state.captures.filter(Boolean).length;
             document.getElementById('capture-progress-label').textContent = `Tersimpan (${count} / ${state.totalSlots})`;
+            syncExternalPreviewWindow();
 
             const btnRetakeLast = document.getElementById('btn-retake-last');
             btnRetakeLast.classList.toggle('hidden', count === 0);
@@ -1487,20 +1586,45 @@ function doGet(e) {
                             takesBase64: takesDataUrls
                         })
                     });
-                    // Tunggu 2.5 detik agar Google Drive selesai menyimpan file lalu ambil URL-nya
                     await new Promise(r => setTimeout(r, 2500));
-                    const verified = await fetchSheetSessionViaJsonp(state.sheetWebhookUrl, state.sessionId);
-                    if (verified && verified.framedUrl) {
-                        state.latestDriveUrl = verified.framedUrl;
+                    const verifyData = await fetchSheetSessionViaJsonp(state.sheetWebhookUrl, state.sessionId);
+                    if (verifyData && verifyData.framedUrl) {
+                        state.latestDriveUrl = verifyData.framedUrl;
+                        dbSaved = true;
                     }
-                    dbSaved = true;
                 }
             }
 
-            // 3. Setelah database & Drive selesai menerima data, baru tampilkan QR Code & status terhubung!
             if (badge) {
-                badge.textContent = dbSaved ? '✓ Tersimpan di Database' : '✓ Siap Diunduh';
+                badge.textContent = dbSaved ? '✓ Tersimpan di Database & Drive' : '✓ Siap Diunduh';
                 badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
+            }
+
+            updateQRCode();
+        }
+
+        function getCleanPublicBaseUrl() {
+            const saved = localStorage.getItem('mudastudio_public_url');
+            if (saved && saved.startsWith('http')) return saved;
+
+            if (window.location.protocol.startsWith('http')) {
+                const host = window.location.hostname;
+                // Ubah URL preview Vercel khusus tim (mengandung -team... atau hash deployment) ke domain utama produksi agar publik tanpa login
+                if (host.endsWith('.vercel.app') && host.includes('-')) {
+                    const projectSlug = host.split('-')[0];
+                    if (projectSlug && projectSlug.length > 2) {
+                        return `${window.location.protocol}//${host.replace(/-[a-z0-9]{7,}-[^.]+\.vercel\.app$/, '.vercel.app')}`;
+                    }
+                }
+                return window.location.origin + window.location.pathname;
+            }
+            return '';
+        }
+
+        function savePublicVercelUrl() {
+            const baseInput = document.getElementById('qr-base-url');
+            if (baseInput) {
+                localStorage.setItem('mudastudio_public_url', baseInput.value.trim());
             }
             updateQRCode();
         }
@@ -1515,8 +1639,8 @@ function doGet(e) {
             container.innerHTML = '';
 
             const baseInput = document.getElementById('qr-base-url');
-            if (baseInput && !baseInput.value && window.location.protocol.startsWith('http')) {
-                baseInput.value = window.location.origin + window.location.pathname;
+            if (baseInput && !baseInput.value) {
+                baseInput.value = getCleanPublicBaseUrl();
             }
 
             const baseUrl = (baseInput && baseInput.value.trim()) ? baseInput.value.trim() : '';
