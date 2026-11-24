@@ -264,10 +264,11 @@
 
             <!-- Pemilih Kamera DSLR / Webcam & Upload Foto Manual -->
             <div class="flex flex-wrap items-center gap-2">
-                <!-- Tombol Cepat 3 Jenis Kamera: Laptop, DSLR, HP Android/iPhone -->
+                <!-- Tombol Cepat 4 Jenis Kamera: Laptop, DSLR USB, HDMI/USB Video, HP Android/iPhone -->
                 <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
                     <button onclick="selectCameraSourceType('laptop')" id="cam-type-laptop" class="cam-type-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-white text-pink-600 shadow-xs transition">💻 Laptop</button>
-                    <button onclick="selectCameraSourceType('dslr')" id="cam-type-dslr" class="cam-type-btn px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition">📷 DSLR</button>
+                    <button onclick="selectCameraSourceType('dslr')" id="cam-type-dslr" class="cam-type-btn px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition">📷 DSLR USB</button>
+                    <button onclick="selectCameraSourceType('hdmi')" id="cam-type-hdmi" class="cam-type-btn px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition">🔌 HDMI / USB Video</button>
                     <button onclick="selectCameraSourceType('phone')" id="cam-type-phone" class="cam-type-btn px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition">📱 HP Andro/iP</button>
                 </div>
 
@@ -278,6 +279,7 @@
                     <select id="camera-device-select" class="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none max-w-[160px] sm:max-w-[210px]">
                         <option value="">Mendeteksi Kamera...</option>
                     </select>
+                    <button onclick="populateCameraDevices(true)" title="Refresh Daftar Kamera / USB Video" class="ml-1 text-slate-500 hover:text-pink-600 font-bold text-xs transition">↻</button>
                 </div>
                 <button onclick="toggleMirror()" id="studio-mirror-btn" class="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 transition">
                     Cermin: ON
@@ -851,7 +853,7 @@ function doGet(e) {
         }
 
         /**
-         * DETEKSI & KONEKSI KAMERA WEBCAM / DSLR / HP ANDROID & IPHONE
+         * DETEKSI & KONEKSI KAMERA WEBCAM / DSLR / HDMI USB VIDEO / HP ANDROID & IPHONE
          */
         function selectCameraSourceType(type) {
             state.cameraSourceType = type;
@@ -865,10 +867,11 @@ function doGet(e) {
                 active.classList.remove('text-slate-600', 'font-semibold');
             }
 
-            // Kamera DSLR biasanya tidak perlu di-mirror seperti kamera depan laptop
-            if (type === 'dslr' && state.isMirrored) {
+            // Kamera DSLR & HDMI Capture tidak perlu di-mirror agar tulisan/hasil tidak terbalik
+            const isExternalCamera = (type === 'dslr' || type === 'hdmi');
+            if (isExternalCamera && state.isMirrored) {
                 toggleMirror();
-            } else if (type !== 'dslr' && !state.isMirrored) {
+            } else if (!isExternalCamera && !state.isMirrored) {
                 toggleMirror();
             }
 
@@ -893,9 +896,11 @@ function doGet(e) {
 
                     const lower = label.toLowerCase();
                     if (autoSwitchByType && !matchedDeviceId) {
-                        if (state.cameraSourceType === 'dslr' && (lower.includes('eos') || lower.includes('nikon') || lower.includes('sony') || lower.includes('capture') || lower.includes('usb video') || lower.includes('cam link'))) {
+                        if (state.cameraSourceType === 'hdmi' && (lower.includes('usb video') || lower.includes('hdmi') || lower.includes('capture') || lower.includes('cam link') || lower.includes('usb3.0') || lower.includes('usb2.0') || lower.includes('uvc'))) {
                             matchedDeviceId = device.deviceId;
-                        } else if (state.cameraSourceType === 'phone' && (lower.includes('droidcam') || lower.includes('iriun') || lower.includes('epoccam') || lower.includes('iphone') || lower.includes('android') || lower.includes('back'))) {
+                        } else if (state.cameraSourceType === 'dslr' && (lower.includes('eos') || lower.includes('nikon') || lower.includes('sony') || lower.includes('fujifilm'))) {
+                            matchedDeviceId = device.deviceId;
+                        } else if (state.cameraSourceType === 'phone' && (lower.includes('droidcam') || lower.includes('iriun') || lower.includes('epoccam') || lower.includes('camo') || lower.includes('iphone') || lower.includes('android') || lower.includes('back'))) {
                             matchedDeviceId = device.deviceId;
                         } else if (state.cameraSourceType === 'laptop' && (lower.includes('integrated') || lower.includes('facetime') || lower.includes('webcam') || idx === 0)) {
                             matchedDeviceId = device.deviceId;
@@ -906,8 +911,18 @@ function doGet(e) {
                 if (autoSwitchByType && matchedDeviceId) {
                     select.value = matchedDeviceId;
                     initCamera(matchedDeviceId);
+                } else if (autoSwitchByType && state.cameraSourceType === 'hdmi') {
+                    // Fallback jika nama USB Video tidak mengandung kata kunci standar, pilih kamera eksternal terakhir
+                    if (videoInputs.length > 1) {
+                        const lastCam = videoInputs[videoInputs.length - 1];
+                        select.value = lastCam.deviceId;
+                        initCamera(lastCam.deviceId);
+                    } else {
+                        showToast("Perangkat USB Video / HDMI belum terdeteksi, cek kabel Capture Card!", true);
+                    }
                 } else if (videoInputs.length > 0) {
-                    document.getElementById('active-camera-label').textContent = (videoInputs[0].label || 'Kamera Aktif').slice(0, 22);
+                    const currentOpt = select.options[select.selectedIndex];
+                    document.getElementById('active-camera-label').textContent = ((currentOpt ? currentOpt.text : videoInputs[0].label) || 'Kamera Aktif').slice(0, 22);
                 }
             } catch (e) {
                 console.warn('Tidak dapat membaca daftar perangkat kamera:', e);
